@@ -24,278 +24,546 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // ★ 共用 Amber Flow 的資料庫連線
+        // ★ 設定 Supabase 連線(更新)
         const supabaseUrl = 'https://kwvbhzjzysmivafsvwng.supabase.co';
         const supabaseKey = 'sb_publishable_7RUbenk2kXNDmvuo1XtHbQ_m0RjXuZr'; 
         const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-        function AdminApp() {
-            // ★ 新增：登入狀態管理
-            const [isLoggedIn, setIsLoggedIn] = useState(false);
-            
+        // 共用圖標元件
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const ref = useRef(null);
+            useEffect(() => {
+                if (!ref.current || !window.lucide) return;
+                const i = document.createElement('i');
+                i.setAttribute('data-lucide', name);
+                i.setAttribute('width', size);
+                i.setAttribute('height', size);
+                if (className) i.setAttribute('class', className);
+                ref.current.innerHTML = '';
+                ref.current.appendChild(i);
+                window.lucide.createIcons({ root: ref.current });
+            }, [name, size, className]);
+            return <span ref={ref} className="inline-flex items-center justify-center"></span>;
+        };
+
+        // --- 1. 儀表板與訂單管理組件 ---
+        function DashboardView({ supabase }) {
             const [bookings, setBookings] = useState([]);
             const [stats, setStats] = useState({ count: 0, revenue: 0 });
             const [loading, setLoading] = useState(false);
 
-            // --- 讀取預約資料 (只有登入後才執行) ---
-            useEffect(() => {
-                if (isLoggedIn) {
-                    fetchBookings();
-                }
-            }, [isLoggedIn]);
+            useEffect(() => { fetchBookings(); }, []);
 
             async function fetchBookings() {
-                try {
-                    setLoading(true);
-                    const { data, error } = await supabaseClient
-                        .from('bookings')
-                        .select('*')
-                        .order('created_at', { ascending: false });
+                setLoading(true);
+                const { data, error } = await supabase
+                    .from('bookings')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                
+                if (!error && data) {
+                    setBookings(data);
+                    const validBookings = data.filter(b => b.status !== 'cancelled');
+                    setStats({ count: validBookings.length, revenue: validBookings.length * 1000 });
+                }
+                setLoading(false);
+            }
 
-                    if (error) throw error;
+            async function updateStatus(id, newStatus) {
+                if(!confirm(`確定要將此訂單標記為「${newStatus}」嗎？`)) return;
+                const { error } = await supabase.from('bookings').update({ status: newStatus }).eq('id', id);
+                if (!error) fetchBookings();
+            }
 
-                    setBookings(data || []);
-                    const totalRevenue = data.length * 1200; 
-                    setStats({ count: data.length, revenue: totalRevenue });
+            return (
+                <div className="space-y-8">
+                    {/* 數據卡片 */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                            <div className="flex justify-between items-start mb-4">
+                                <div><p className="text-sm text-slate-400 mb-1">有效訂單</p><h3 className="text-3xl font-bold text-slate-800">{stats.count}</h3></div>
+                                <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Icon name="ticket" /></div>
+                            </div>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                            <div className="flex justify-between items-start mb-4">
+                                <div><p className="text-sm text-slate-400 mb-1">預估營收</p><h3 className="text-3xl font-bold text-slate-800">${stats.revenue.toLocaleString()}</h3></div>
+                                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><Icon name="dollar-sign" /></div>
+                            </div>
+                        </div>
+                    </div>
 
-                } catch (err) {
-                    console.error("讀取失敗:", err);
-                } finally {
-                    setLoading(false);
+                    {/* 訂單列表 */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                            <h3 className="font-bold text-lg text-slate-800">最新預約</h3>
+                            <button onClick={fetchBookings} className="text-sm text-emerald-600 flex items-center font-bold hover:bg-emerald-50 px-3 py-1 rounded transition">
+                                <Icon name="refresh-ccw" size={14} className="mr-1" /> 重新整理
+                            </button>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-gray-50 text-slate-500 text-xs uppercase">
+                                    <tr>
+                                        <th className="p-4 font-bold border-b">顧客資料</th>
+                                        <th className="p-4 font-bold border-b">項目與時間</th>
+                                        <th className="p-4 font-bold border-b">狀態</th>
+                                        <th className="p-4 font-bold border-b text-right">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="text-sm">
+                                    {loading ? <tr><td colSpan="4" className="p-8 text-center text-slate-400">載入中...</td></tr> : 
+                                     bookings.length === 0 ? <tr><td colSpan="4" className="p-8 text-center text-slate-400">尚無資料</td></tr> :
+                                     bookings.map(b => (
+                                        <tr key={b.id} className={`border-b border-gray-100 transition ${b.status === 'cancelled' ? 'bg-gray-50 opacity-60' : 'hover:bg-gray-50'}`}>
+                                            <td className="p-4">
+                                                <div className="font-bold text-slate-700">{b.customer_name}</div>
+                                                <div className="text-xs text-slate-400 font-mono">{b.customer_phone}</div>
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="text-emerald-700 font-medium">{b.service_name}</div>
+                                                <div className="text-xs text-slate-500 mt-1 flex items-center">
+                                                    <span className="bg-slate-100 px-2 py-0.5 rounded mr-2">{b.staff_name}</span>
+                                                    <span>{b.booking_date} {b.booking_time}</span>
+                                                </div>
+                                            </td>
+                                            <td className="p-4">
+                                                {b.status === 'cancelled' ? <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs font-bold">已取消</span> :
+                                                 b.status === 'completed' ? <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-bold">已完成</span> :
+                                                 <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">已預約</span>}
+                                            </td>
+                                            <td className="p-4 text-right space-x-2">
+                                                {b.status !== 'cancelled' && (
+                                                    <>
+                                                        <button onClick={() => updateStatus(b.id, 'completed')} className="text-blue-600 hover:bg-blue-50 p-2 rounded" title="完成訂單"><Icon name="check-square" size={18}/></button>
+                                                        <button onClick={() => updateStatus(b.id, 'cancelled')} className="text-red-400 hover:bg-red-50 p-2 rounded" title="取消訂單"><Icon name="x-circle" size={18}/></button>
+                                                    </>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- 2. 服務管理組件 (可編輯 + 綁定人員 + 防呆刪除) ---
+        function ServiceManager({ supabase }) {
+            const [services, setServices] = useState([]);
+            const [staffList, setStaffList] = useState([]);
+            const [isEditing, setIsEditing] = useState(false);
+            const [loading, setLoading] = useState(false);
+            const [formData, setFormData] = useState({ id: null, name: '', price: 1000, duration: 60, description: '', staff_ids: [] });
+
+            useEffect(() => { 
+                fetchServices(); 
+                fetchStaff();
+            }, []);
+
+            async function fetchServices() {
+                setLoading(true);
+                const { data, error } = await supabase.from('services').select('*');
+                if (!error && data) {
+                    const activeServices = data.filter(item => !item.deleted_at);
+                    setServices(activeServices);
+                }
+                setLoading(false);
+            }
+
+            async function fetchStaff() {
+                const { data } = await supabase.from('staff').select('*');
+                if (data) {
+                    const activeStaff = data.filter(item => !item.deleted_at);
+                    setStaffList(activeStaff);
                 }
             }
 
-            const handleCopyLink = () => {
-                const currentUrl = window.location.href;
-                const bookingUrl = currentUrl.includes('admin.html') 
-                    ? currentUrl.replace('admin.html', 'index.html')
-                    : currentUrl.replace(/\/$/, '') + '/index.html';
+            async function handleDelete(id, name) {
+                if(!confirm(`確定要刪除「${name}」嗎？`)) return;
 
-                navigator.clipboard.writeText(bookingUrl).then(() => {
-                    alert("✅ 連結已複製！\n" + bookingUrl);
-                }).catch(err => {
-                    prompt("請手動複製以下連結：", bookingUrl);
-                });
-            };
+                const today = new Date().toISOString().split('T')[0];
+                const { count, error } = await supabase
+                    .from('bookings')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('service_name', name)
+                    .neq('status', 'cancelled')
+                    .gte('booking_date', today);
 
-            const Icon = ({ name, size = 20, className = "" }) => {
-                const ref = useRef(null);
-                useEffect(() => {
-                    if (!ref.current || !window.lucide) return;
-                    const i = document.createElement('i');
-                    i.setAttribute('data-lucide', name);
-                    i.setAttribute('width', size);
-                    i.setAttribute('height', size);
-                    if (className) i.setAttribute('class', className);
-                    ref.current.innerHTML = '';
-                    ref.current.appendChild(i);
-                    window.lucide.createIcons({ root: ref.current });
-                }, [name, size, className]);
-                return <span ref={ref} className="inline-flex items-center justify-center"></span>;
-            };
+                if (count > 0) {
+                    const confirmSoftDelete = confirm(`⚠️ 警告：此服務尚有 ${count} 筆進行中的預約！\n\n系統將執行「軟刪除」(記錄為今日 00:00 刪除)，保留歷史資料但不再供新預約。\n\n是否繼續？`);
+                    if (!confirmSoftDelete) return;
 
-            // ★ 畫面 1: 模擬登入頁面
+                    const softDeleteDate = new Date();
+                    softDeleteDate.setHours(0,0,0,0);
+                    const { error: softError } = await supabase.from('services').update({ deleted_at: softDeleteDate.toISOString() }).eq('id', id);
+                    
+                    if (softError) {
+                        alert("軟刪除失敗 (可能資料庫缺少 deleted_at 欄位)，請聯絡管理員。");
+                    }
+                } else {
+                    await supabase.from('services').delete().eq('id', id);
+                }
+                fetchServices();
+            }
+
+            async function handleSubmit() {
+                const { data: stores } = await supabase.from('stores').select('id').limit(1);
+                const storeId = stores[0]?.id;
+                if (!storeId) return alert("系統錯誤：找不到商家ID");
+
+                const payload = { 
+                    name: formData.name,
+                    price: formData.price,
+                    duration: formData.duration,
+                    description: formData.description,
+                    store_id: storeId,
+                };
+
+                let error;
+                if (formData.id) {
+                    const { error: updateError } = await supabase.from('services').update(payload).eq('id', formData.id);
+                    error = updateError;
+                } else {
+                    const { error: insertError } = await supabase.from('services').insert([payload]);
+                    error = insertError;
+                }
+
+                if (!error) {
+                    setIsEditing(false);
+                    setFormData({ id: null, name: '', price: 1000, duration: 60, description: '', staff_ids: [] });
+                    fetchServices();
+                } else {
+                    alert("儲存失敗: " + error.message);
+                }
+            }
+
+            function openEdit(service = null) {
+                if (service) {
+                    setFormData({ ...service, staff_ids: service.staff_ids || [] });
+                } else {
+                    setFormData({ id: null, name: '', price: 1000, duration: 60, description: '', staff_ids: [] });
+                }
+                setIsEditing(true);
+            }
+
+            return (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-bold text-lg">課程服務管理</h3>
+                        <button onClick={() => openEdit()} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-emerald-700 flex items-center">
+                            <Icon name="plus" size={16} className="mr-2"/> 新增課程
+                        </button>
+                    </div>
+
+                    {isEditing && (
+                        <div className="mb-8 bg-gray-50 p-6 rounded-xl border border-emerald-200 shadow-inner">
+                            <h4 className="font-bold text-lg text-emerald-800 mb-4">{formData.id ? '編輯課程' : '新增課程'}</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div><label className="text-xs text-slate-500 font-bold">課程名稱</label><input className="w-full p-2 border rounded" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+                                <div><label className="text-xs text-slate-500 font-bold">價格 ($)</label><input type="number" className="w-full p-2 border rounded" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} /></div>
+                                <div><label className="text-xs text-slate-500 font-bold">時長 (分鐘)</label><input type="number" className="w-full p-2 border rounded" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} /></div>
+                                <div><label className="text-xs text-slate-500 font-bold">描述</label><input className="w-full p-2 border rounded" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
+                            </div>
+                            
+                            <div className="mb-4">
+                                <label className="text-xs text-slate-500 font-bold mb-2 block">指派服務人員 (勾選)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {staffList.map(staff => (
+                                        <label key={staff.id} className="flex items-center bg-white border px-3 py-2 rounded cursor-pointer hover:border-emerald-500">
+                                            <input type="checkbox" className="mr-2 accent-emerald-600" 
+                                                checked={formData.staff_ids.includes(staff.id)}
+                                                onChange={e => {
+                                                    const newIds = e.target.checked 
+                                                        ? [...formData.staff_ids, staff.id] 
+                                                        : formData.staff_ids.filter(id => id !== staff.id);
+                                                    setFormData({...formData, staff_ids: newIds});
+                                                }}
+                                            />
+                                            <span className="text-sm">{staff.name}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end space-x-2 border-t border-gray-200 pt-4">
+                                <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-slate-500 hover:bg-gray-200 rounded">取消</button>
+                                <button onClick={handleSubmit} className="px-4 py-2 bg-emerald-600 text-white rounded font-bold hover:bg-emerald-700">
+                                    {formData.id ? '更新資料' : '確認新增'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="space-y-3">
+                        {loading ? <div className="text-center text-slate-400 py-4">讀取中...</div> : 
+                         services.length === 0 ? <div className="text-center text-slate-400 py-4">目前沒有課程，請新增。</div> :
+                         services.map(s => (
+                            <div key={s.id} className="flex justify-between items-center p-4 border border-gray-100 rounded-xl hover:border-emerald-200 transition bg-white">
+                                <div>
+                                    <div className="font-bold text-slate-700 text-lg">{s.name}</div>
+                                    <div className="text-xs text-slate-400 flex items-center mt-1">
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded mr-2 text-slate-600">{s.duration} 分鐘</span>
+                                        <span className="font-mono font-bold text-emerald-600">${s.price}</span>
+                                    </div>
+                                </div>
+                                <div className="flex space-x-2">
+                                    <button onClick={() => openEdit(s)} className="text-blue-500 hover:bg-blue-50 p-2 rounded transition" title="編輯"><Icon name="edit" size={18}/></button>
+                                    <button onClick={() => handleDelete(s.id, s.name)} className="text-red-400 hover:bg-red-50 p-2 rounded transition" title="刪除"><Icon name="trash-2" size={18}/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // --- 3. 人員管理組件 (大頭貼上傳 + 編輯 + 防呆 + 刪除圖片) ---
+        function StaffManager({ supabase }) {
+            const [staff, setStaff] = useState([]);
+            const [isEditing, setIsEditing] = useState(false);
+            const [loading, setLoading] = useState(false);
+            const [formData, setFormData] = useState({ id: null, name: '', title: '', avatar: '' });
+            const fileInputRef = useRef(null);
+
+            useEffect(() => { fetchStaff(); }, []);
+
+            async function fetchStaff() {
+                setLoading(true);
+                const { data, error } = await supabase.from('staff').select('*');
+                if (!error && data) {
+                    const activeStaff = data.filter(item => !item.deleted_at);
+                    setStaff(activeStaff);
+                }
+                setLoading(false);
+            }
+
+            async function handleDelete(id, name) {
+                if(!confirm(`確定要移除「${name}」嗎？`)) return;
+
+                // 1. 先抓取該人員資料，為了之後硬刪除時可以刪圖片
+                const { data: targetStaff } = await supabase.from('staff').select('avatar').eq('id', id).single();
+
+                const today = new Date().toISOString().split('T')[0];
+                const { count } = await supabase
+                    .from('bookings')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('staff_name', name)
+                    .neq('status', 'cancelled')
+                    .gte('booking_date', today);
+
+                if (count > 0) {
+                    const confirmSoftDelete = confirm(`⚠️ 警告：此人員尚有 ${count} 筆進行中的預約！\n\n系統將執行「軟刪除」，保留歷史資料但不再接受新預約。\n\n是否繼續？`);
+                    if (!confirmSoftDelete) return;
+
+                    const softDeleteDate = new Date();
+                    softDeleteDate.setHours(0,0,0,0);
+                    const { error: softError } = await supabase.from('staff').update({ deleted_at: softDeleteDate.toISOString() }).eq('id', id);
+                    if (softError) alert("軟刪除失敗 (可能資料庫缺少 deleted_at 欄位)");
+                } else {
+                    // 硬刪除：一併刪除 Supabase Storage 中的圖片
+                    if (targetStaff && targetStaff.avatar) {
+                        try {
+                            const avatarUrl = targetStaff.avatar;
+                            if (avatarUrl.includes('/avatars/')) {
+                                const filePath = decodeURIComponent(avatarUrl.split('/avatars/')[1]);
+                                if (filePath) {
+                                    const { error: storageError } = await supabase.storage.from('avatars').remove([filePath]);
+                                    if (storageError) console.error("圖片刪除失敗:", storageError);
+                                }
+                            }
+                        } catch (err) {
+                            console.error("圖片刪除過程發生錯誤:", err);
+                        }
+                    }
+                    await supabase.from('staff').delete().eq('id', id);
+                }
+                fetchStaff();
+            }
+
+            async function handleFileUpload(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                try {
+                    const fileName = `${Date.now()}_${file.name}`;
+                    const { data, error } = await supabase.storage.from('avatars').upload(fileName, file);
+                    
+                    if (error) {
+                        alert("上傳失敗：請確認 Supabase 已建立 'avatars' 公開 bucket。\n\n(目前暫時使用預設頭像)");
+                        console.error(error);
+                        return;
+                    }
+
+                    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
+                    setFormData({ ...formData, avatar: urlData.publicUrl });
+                } catch (err) {
+                    alert("上傳發生錯誤");
+                }
+            }
+
+            async function handleSubmit() {
+                const { data: stores } = await supabase.from('stores').select('id').limit(1);
+                const storeId = stores[0]?.id;
+                
+                const finalAvatar = formData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name}`;
+
+                const payload = { 
+                    name: formData.name, 
+                    title: formData.title,
+                    store_id: storeId,
+                    avatar: finalAvatar,
+                    rating: 5.0 
+                };
+
+                let error;
+                if (formData.id) {
+                    const { error: updateError } = await supabase.from('staff').update(payload).eq('id', formData.id);
+                    error = updateError;
+                } else {
+                    const { error: insertError } = await supabase.from('staff').insert([payload]);
+                    error = insertError;
+                }
+                
+                if (!error) {
+                    setIsEditing(false);
+                    setFormData({ id: null, name: '', title: '', avatar: '' });
+                    fetchStaff();
+                } else {
+                    alert("儲存失敗: " + error.message);
+                }
+            }
+
+            function openEdit(person = null) {
+                if (person) {
+                    setFormData(person);
+                } else {
+                    setFormData({ id: null, name: '', title: '', avatar: '' });
+                }
+                setIsEditing(true);
+            }
+
+            return (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-bold text-lg">人員管理</h3>
+                        <button onClick={() => openEdit()} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-emerald-700 flex items-center">
+                            <Icon name="plus" size={16} className="mr-2"/> 新增人員
+                        </button>
+                    </div>
+
+                    {isEditing && (
+                        <div className="mb-8 bg-gray-50 p-6 rounded-xl border border-emerald-200 shadow-inner">
+                            <h4 className="font-bold text-lg text-emerald-800 mb-4">{formData.id ? '編輯人員' : '新增人員'}</h4>
+                            <div className="flex flex-col md:flex-row gap-6">
+                                {/* 頭像上傳區 */}
+                                <div className="flex flex-col items-center">
+                                    <div className="w-24 h-24 rounded-full bg-gray-200 overflow-hidden mb-2 border-4 border-white shadow-sm">
+                                        <img src={formData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name || 'default'}`} className="w-full h-full object-cover" />
+                                    </div>
+                                    <button onClick={() => fileInputRef.current.click()} className="text-xs bg-slate-200 hover:bg-slate-300 px-2 py-1 rounded">上傳照片</button>
+                                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
+                                </div>
+
+                                <div className="flex-1 grid grid-cols-1 gap-4">
+                                    <div><label className="text-xs text-slate-500 font-bold">姓名</label><input className="w-full p-2 border rounded" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+                                    <div><label className="text-xs text-slate-500 font-bold">職稱 (如: 教練)</label><input className="w-full p-2 border rounded" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} /></div>
+                                </div>
+                            </div>
+                            <div className="flex justify-end space-x-2 mt-4 border-t border-gray-200 pt-4">
+                                <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-slate-500 hover:bg-gray-200 rounded">取消</button>
+                                <button onClick={handleSubmit} className="px-4 py-2 bg-emerald-600 text-white rounded font-bold hover:bg-emerald-700">
+                                    {formData.id ? '更新資料' : '確認新增'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {loading ? <div className="text-center text-slate-400 py-4 col-span-2">讀取中...</div> :
+                         staff.length === 0 ? <div className="text-center text-slate-400 py-4 col-span-2">目前沒有人員資料。</div> :
+                         staff.map(s => (
+                            <div key={s.id} className="flex items-center p-4 border border-gray-100 rounded-xl bg-white hover:border-emerald-200 transition">
+                                <img src={s.avatar} className="w-12 h-12 rounded-full bg-gray-200 mr-4 object-cover" />
+                                <div className="flex-1">
+                                    <div className="font-bold text-slate-700">{s.name}</div>
+                                    <div className="text-xs text-slate-400">{s.title}</div>
+                                </div>
+                                <div className="flex space-x-1">
+                                    <button onClick={() => openEdit(s)} className="text-blue-500 hover:bg-blue-50 p-2 rounded" title="編輯"><Icon name="edit" size={18}/></button>
+                                    <button onClick={() => handleDelete(s.id, s.name)} className="text-red-400 hover:bg-red-50 p-2 rounded" title="移除"><Icon name="trash-2" size={18}/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // --- 主程式框架 ---
+        function AdminApp() {
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [currentView, setCurrentView] = useState('dashboard');
+
             if (!isLoggedIn) {
                 return (
                     <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
                         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm border border-slate-200">
                             <div className="flex justify-center mb-6">
-                                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
-                                    <span className="text-3xl">🧘‍♀️</span>
-                                </div>
+                                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-3xl">🧘‍♀️</div>
                             </div>
                             <h2 className="text-2xl font-bold text-center text-slate-800 mb-1">Amber Flow</h2>
                             <p className="text-center text-slate-500 text-sm mb-8">商家管理系統</p>
-                            
                             <div className="space-y-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 mb-1 uppercase">帳號</label>
-                                    <input type="text" value="admin" disabled className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 cursor-not-allowed font-mono" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-400 mb-1 uppercase">密碼</label>
-                                    <input type="password" value="1234" disabled className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 cursor-not-allowed font-mono" />
-                                </div>
-                                <button 
-                                    onClick={() => setIsLoggedIn(true)}
-                                    className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition shadow-lg active:scale-95 flex items-center justify-center mt-4"
-                                >
+                                <input type="text" value="admin" disabled className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 cursor-not-allowed font-mono text-center" />
+                                <input type="password" value="1234" disabled className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 cursor-not-allowed font-mono text-center" />
+                                <button onClick={() => setIsLoggedIn(true)} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition shadow-lg active:scale-95 flex items-center justify-center mt-4">
                                     登入系統 <Icon name="arrow-right" size={16} className="ml-2" />
                                 </button>
                             </div>
-                            <p className="text-center text-xs text-slate-300 mt-6">Demo Version 1.0</p>
                         </div>
                     </div>
                 );
             }
 
-            // ★ 畫面 2: 正式儀表板 (Dashboard)
             return (
-                <div className="min-h-screen flex">
-                    {/* 左側選單 (Sidebar) */}
-                    <aside className="w-64 bg-slate-900 text-white hidden md:block">
-                        <div className="p-6 border-b border-slate-700">
-                            <h1 className="text-xl font-bold flex items-center">
-                                <span className="mr-2">🧘‍♀️</span> Amber Flow
-                            </h1>
-                            <p className="text-xs text-slate-400 mt-1">商家管理後台</p>
+                <div className="min-h-screen flex flex-col md:flex-row">
+                    <aside className="w-full md:w-64 bg-slate-900 text-white flex-shrink-0">
+                        <div className="p-6 border-b border-slate-800 hidden md:block">
+                            <h1 className="text-xl font-bold flex items-center"><span className="mr-2">🧘‍♀️</span> Amber Flow</h1>
                         </div>
-                        <nav className="p-4 space-y-2">
-                            <a href="#" className="flex items-center p-3 bg-emerald-600 rounded-lg text-white font-medium">
-                                <Icon name="layout-dashboard" className="mr-3" /> 儀表板
-                            </a>
-                            <a href="#" className="flex items-center p-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition">
-                                <Icon name="calendar" className="mr-3" /> 行事曆
-                            </a>
-                            <a href="#" className="flex items-center p-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition">
-                                <Icon name="users" className="mr-3" /> 會員管理
-                            </a>
+                        <nav className="p-4 space-y-2 flex md:block overflow-x-auto md:overflow-visible">
+                            <button onClick={() => setCurrentView('dashboard')} className={`flex items-center p-3 rounded-lg w-full transition ${currentView === 'dashboard' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                <Icon name="layout-dashboard" className="mr-3 flex-shrink-0" /> <span className="whitespace-nowrap">儀表板</span>
+                            </button>
+                            <button onClick={() => setCurrentView('services')} className={`flex items-center p-3 rounded-lg w-full transition ${currentView === 'services' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                <Icon name="list" className="mr-3 flex-shrink-0" /> <span className="whitespace-nowrap">課程管理</span>
+                            </button>
+                            <button onClick={() => setCurrentView('staff')} className={`flex items-center p-3 rounded-lg w-full transition ${currentView === 'staff' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                <Icon name="users" className="mr-3 flex-shrink-0" /> <span className="whitespace-nowrap">人員管理</span>
+                            </button>
                         </nav>
-                        <div className="p-4 mt-auto border-t border-slate-800">
-                             <button onClick={() => setIsLoggedIn(false)} className="flex items-center text-slate-400 hover:text-white text-sm">
-                                 <Icon name="log-out" size={16} className="mr-2" /> 登出
-                             </button>
+                        <div className="p-4 mt-auto border-t border-slate-800 hidden md:block">
+                             <button onClick={() => setIsLoggedIn(false)} className="flex items-center text-slate-400 hover:text-white text-sm"><Icon name="log-out" size={16} className="mr-2" /> 登出</button>
                         </div>
                     </aside>
 
-                    {/* 主要內容區 */}
-                    <main className="flex-1 overflow-y-auto">
-                        <header className="bg-white border-b border-gray-200 p-4 md:p-6 flex justify-between items-center sticky top-0 z-10">
-                            <div className="flex items-center md:hidden">
-                                <Icon name="menu" className="mr-4" />
-                                <span className="font-bold">Amber Flow</span>
-                            </div>
-                            <h2 className="text-xl font-bold text-slate-800 hidden md:block">今日概況</h2>
+                    <main className="flex-1 overflow-y-auto bg-gray-50 h-screen">
+                        <header className="bg-white border-b border-gray-200 p-6 flex justify-between items-center sticky top-0 z-10">
+                            <h2 className="text-xl font-bold text-slate-800">
+                                {currentView === 'dashboard' ? '今日概況' : currentView === 'services' ? '服務項目設定' : '團隊成員設定'}
+                            </h2>
                             <div className="flex items-center space-x-4">
-                                <button 
-                                    onClick={handleCopyLink}
-                                    className="hidden md:flex items-center bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-700 transition shadow-sm active:scale-95"
-                                >
-                                    <Icon name="link" size={16} className="mr-2" />
-                                    複製店鋪連結
-                                </button>
-
-                                <button className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 relative">
-                                    <Icon name="bell" size={20} />
-                                    <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-                                </button>
-                                <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-700 font-bold text-xs border-2 border-white shadow-sm">
-                                    AM
-                                </div>
+                                <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-700 font-bold text-xs border-2 border-white shadow-sm">AM</div>
                             </div>
                         </header>
 
-                        <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
-                            
-                            <div className="md:hidden">
-                                <button 
-                                    onClick={handleCopyLink}
-                                    className="w-full flex justify-center items-center bg-slate-800 text-white px-4 py-3 rounded-xl text-sm font-bold hover:bg-slate-700 transition shadow-sm"
-                                >
-                                    <Icon name="link" size={16} className="mr-2" />
-                                    複製店鋪預約連結
-                                </button>
-                            </div>
-
-                            {/* 數據卡片區 */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-sm text-slate-400 mb-1">今日訂單</p>
-                                            <h3 className="text-3xl font-bold text-slate-800">{stats.count}</h3>
-                                        </div>
-                                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                                            <Icon name="ticket" />
-                                        </div>
-                                    </div>
-                                    <div className="text-xs text-green-600 flex items-center font-bold">
-                                        <Icon name="trending-up" size={14} className="mr-1" /> +12% 較昨日
-                                    </div>
-                                </div>
-
-                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-sm text-slate-400 mb-1">預估營收</p>
-                                            <h3 className="text-3xl font-bold text-slate-800">${stats.revenue.toLocaleString()}</h3>
-                                        </div>
-                                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-                                            <Icon name="dollar-sign" />
-                                        </div>
-                                    </div>
-                                    <div className="text-xs text-slate-400">
-                                        包含未付款訂單
-                                    </div>
-                                </div>
-
-                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-sm text-slate-400 mb-1">新會員</p>
-                                            <h3 className="text-3xl font-bold text-slate-800">3</h3>
-                                        </div>
-                                        <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
-                                            <Icon name="user-plus" />
-                                        </div>
-                                    </div>
-                                    <div className="text-xs text-green-600 flex items-center font-bold">
-                                        <Icon name="trending-up" size={14} className="mr-1" /> 持續成長中
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 訂單列表區 */}
-                            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                                    <h3 className="font-bold text-lg text-slate-800">最新預約</h3>
-                                    <button onClick={fetchBookings} className="text-sm text-emerald-600 hover:text-emerald-700 flex items-center font-bold">
-                                        <Icon name="refresh-ccw" size={14} className="mr-1" /> 重新整理
-                                    </button>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead className="bg-gray-50 text-slate-500 text-xs uppercase">
-                                            <tr>
-                                                <th className="p-4 font-bold border-b border-gray-100">顧客姓名</th>
-                                                <th className="p-4 font-bold border-b border-gray-100">預約項目</th>
-                                                <th className="p-4 font-bold border-b border-gray-100">日期時間</th>
-                                                <th className="p-4 font-bold border-b border-gray-100">指定人員</th>
-                                                <th className="p-4 font-bold border-b border-gray-100">狀態</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="text-sm">
-                                            {loading ? (
-                                                <tr><td colSpan="5" className="p-8 text-center text-slate-400">載入中...</td></tr>
-                                            ) : bookings.length === 0 ? (
-                                                <tr><td colSpan="5" className="p-8 text-center text-slate-400">目前沒有預約資料</td></tr>
-                                            ) : (
-                                                bookings.map(booking => (
-                                                    <tr key={booking.id} className="hover:bg-gray-50 border-b border-gray-100 last:border-0 transition">
-                                                        <td className="p-4">
-                                                            <div className="font-bold text-slate-700">{booking.customer_name}</div>
-                                                            <div className="text-xs text-slate-400">{booking.customer_phone}</div>
-                                                        </td>
-                                                        <td className="p-4 text-slate-600">{booking.service_name}</td>
-                                                        <td className="p-4">
-                                                            <div className="bg-slate-100 text-slate-600 px-2 py-1 rounded inline-block font-mono text-xs">
-                                                                {booking.booking_date} {booking.booking_time}
-                                                            </div>
-                                                        </td>
-                                                        <td className="p-4 text-slate-600">{booking.staff_name}</td>
-                                                        <td className="p-4">
-                                                            <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">
-                                                                已確認
-                                                            </span>
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
+                        <div className="p-6 max-w-5xl mx-auto pb-20">
+                            {currentView === 'dashboard' && <DashboardView supabase={supabaseClient} />}
+                            {currentView === 'services' && <ServiceManager supabase={supabaseClient} />}
+                            {currentView === 'staff' && <StaffManager supabase={supabaseClient} />}
                         </div>
                     </main>
                 </div>
