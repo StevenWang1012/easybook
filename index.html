@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EasyBook 預約系統 (預覽版)</title>
+    <title>Amber Flow 預約系統 (Demo)</title>
     
     <!-- 1. 引入 Tailwind CSS (美化樣式) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -37,30 +37,31 @@
 
     <!-- 這裡是 React 程式碼邏輯 -->
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
-        // --- 模擬資料庫 ---
+        // --- 模擬資料庫 (改為瑜珈/皮拉提斯主題) ---
         const STORE_INFO = {
-            name: "✨ EasyBook 工作室",
-            address: "台北市大安區光復南路 100 號",
-            description: "專注於您的自然美，提供頂級護膚與美甲體驗。",
+            name: "🧘‍♀️ Amber Flow 瑜珈空間",
+            address: "台北市中山區南京西路 88 號",
+            description: "找回身體的流動與平衡，專屬於您的身心修復時光。",
             lineUrl: "https://line.me/ti/p/@example",
-            rating: 4.9
+            rating: 5.0
         };
 
         const SERVICES = [
-            { id: 's1', name: '深層保濕護理', duration: 60, price: 1500, description: '含洗卸、臉部按摩與玻尿酸導入。', tag: '熱門' },
-            { id: 's2', name: '光療指甲設計', duration: 90, price: 1800, description: '包含修型、甘皮處理，可選單色。', tag: '推薦' },
-            { id: 's3', name: '全身精油舒壓', duration: 60, price: 2000, description: '使用頂級薰衣草精油，釋放壓力。', tag: '放鬆' },
+            { id: 's1', name: '器械皮拉提斯 (Reformer)', duration: 60, price: 1200, description: '1對1 指導，強化核心肌群與體態雕塑。', tag: '熱門' },
+            { id: 's2', name: '空中瑜珈 (Aerial Yoga)', duration: 60, price: 800, description: '利用掛布對抗地心引力，舒展脊椎與壓力。', tag: '推薦' },
+            { id: 's3', name: '基礎哈達瑜珈', duration: 75, price: 600, description: '適合初學者，透過呼吸與體位法找回平靜。', tag: '入門' },
         ];
 
         const STAFF = [
-            { id: 'st1', name: 'Alice 老師', title: '店長', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice', rating: 5.0 },
-            { id: 'st2', name: 'Bob 設計師', title: '資深', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bob', rating: 4.8 },
-            { id: 'st3', name: 'Carol 實習師', title: '助理', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carol', rating: 4.7 },
+            // 這裡把 Amber 放在第一位
+            { id: 'st1', name: 'Amber 老師', title: '創辦人 / 首席教練', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Amber&hair=long&clothing=shirt', rating: 5.0 },
+            { id: 'st2', name: 'Kelly 教練', title: '資深皮拉提斯指導', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Kelly&hair=bob', rating: 4.9 },
+            { id: 'st3', name: 'Leo 老師', title: '流動瑜珈師', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Leo&facialHair=beard', rating: 4.8 },
         ];
 
-        const TIME_SLOTS = ['10:00', '11:00', '13:00', '14:30', '16:00', '17:30', '19:00'];
+        const TIME_SLOTS = ['09:30', '10:30', '14:00', '15:30', '18:30', '19:45', '20:30'];
 
         // --- 主程式元件 ---
         function BookingApp() {
@@ -71,11 +72,7 @@
             const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '' });
             const [error, setError] = useState('');
 
-            // 讓 Lucide 圖標在 React 渲染後初始化
-            useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            });
-
+            // --- 處理函式 ---
             const handleServiceSelect = (service) => { setSelectedService(service); setStep(2); };
             const handleStaffSelect = (staff) => { setSelectedStaff(staff); setStep(3); };
             const handleTimeSelect = (time) => { setSelectedTime(time); setStep(4); };
@@ -89,31 +86,51 @@
                 setStep(5);
             };
 
-            // 圖標組件 (因為 CDN 不能直接 import Lucide React，我們用 data-lucide 屬性)
-            const Icon = ({ name, size = 20, className = "" }) => (
-                <i data-lucide={name} width={size} height={size} className={className}></i>
-            );
+            // --- 修復版圖標組件 (解決 React 白屏問題) ---
+            const Icon = ({ name, size = 20, className = "" }) => {
+                const ref = useRef(null);
+                
+                useEffect(() => {
+                    if (!ref.current || !window.lucide) return;
+                    
+                    const i = document.createElement('i');
+                    i.setAttribute('data-lucide', name);
+                    i.setAttribute('width', size);
+                    i.setAttribute('height', size);
+                    if (className) i.setAttribute('class', className);
+                    
+                    ref.current.innerHTML = '';
+                    ref.current.appendChild(i);
+                    
+                    window.lucide.createIcons({
+                        root: ref.current
+                    });
+                    
+                }, [name, size, className]);
+
+                return <span ref={ref} className="inline-flex items-center justify-center"></span>;
+            };
 
             return (
-                <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50 flex justify-center p-4">
+                <div className="min-h-screen bg-gradient-to-br from-stone-50 to-emerald-50 flex justify-center p-4">
                     <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl flex flex-col overflow-hidden relative border border-white/50 h-[85vh]">
                         
                         {/* 頂部導覽 */}
-                        <header className="bg-white/80 backdrop-blur-md p-4 border-b border-gray-100 flex items-center sticky top-0 z-20">
+                        <header className="bg-white/80 backdrop-blur-md p-4 border-b border-stone-100 flex items-center sticky top-0 z-20">
                             {step > 1 && step < 5 && (
-                                <button onClick={() => setStep(step - 1)} className="mr-2 p-2 rounded-full hover:bg-gray-100 transition-colors">
+                                <button onClick={() => setStep(step - 1)} className="mr-2 p-2 rounded-full hover:bg-stone-100 transition-colors">
                                     <Icon name="chevron-left" />
                                 </button>
                             )}
-                            <div className="flex-1 text-center font-bold text-slate-700">
-                                {step === 1 ? "預約服務" : step === 2 ? "選擇人員" : step === 3 ? "選擇時段" : step === 4 ? "確認資料" : "預約完成"}
+                            <div className="flex-1 text-center font-bold text-stone-700">
+                                {step === 1 ? "預約課程" : step === 2 ? "選擇指導老師" : step === 3 ? "選擇時段" : step === 4 ? "確認資料" : "預約完成"}
                             </div>
                             {step > 1 && step < 5 && <div className="w-10"></div>}
                         </header>
 
                         {/* 進度條 */}
                         {step < 5 && (
-                            <div className="w-full bg-gray-100 h-1">
+                            <div className="w-full bg-stone-100 h-1">
                                 <div className="bg-emerald-500 h-1 transition-all duration-500" style={{ width: `${(step / 4) * 100}%` }}></div>
                             </div>
                         )}
@@ -124,22 +141,22 @@
                             {step === 1 && (
                                 <div className="space-y-6 animate-fade-in-up">
                                     <div className="text-center py-4">
-                                        <h1 className="text-2xl font-bold text-slate-800">{STORE_INFO.name}</h1>
-                                        <p className="text-sm text-slate-500 mt-2">{STORE_INFO.description}</p>
+                                        <h1 className="text-2xl font-bold text-stone-800">{STORE_INFO.name}</h1>
+                                        <p className="text-sm text-stone-500 mt-2 tracking-wide">{STORE_INFO.description}</p>
                                     </div>
                                     <div className="space-y-4">
                                         {SERVICES.map(service => (
                                             <div key={service.id} onClick={() => handleServiceSelect(service)} 
-                                                className="bg-white border border-gray-100 rounded-2xl p-5 hover:border-emerald-400 hover:shadow-lg cursor-pointer transition-all active:scale-95">
+                                                className="bg-white border border-stone-100 rounded-2xl p-5 hover:border-emerald-400 hover:shadow-lg cursor-pointer transition-all active:scale-95 group">
                                                 <div className="flex justify-between">
                                                     <div>
-                                                        <h3 className="font-bold text-lg text-slate-800">{service.name}</h3>
-                                                        <p className="text-xs text-slate-400 mt-1">{service.description}</p>
-                                                        <div className="flex items-center text-xs text-slate-400 mt-2 font-medium">
+                                                        <h3 className="font-bold text-lg text-stone-800 group-hover:text-emerald-700">{service.name}</h3>
+                                                        <p className="text-xs text-stone-400 mt-1">{service.description}</p>
+                                                        <div className="flex items-center text-xs text-stone-400 mt-2 font-medium">
                                                             <span className="mr-1">🕒</span> {service.duration} 分鐘
                                                         </div>
                                                     </div>
-                                                    <span className="text-lg font-bold text-emerald-600">${service.price}</span>
+                                                    <span className="text-lg font-bold text-emerald-600 font-mono">${service.price}</span>
                                                 </div>
                                             </div>
                                         ))}
@@ -151,24 +168,24 @@
                             {step === 2 && (
                                 <div className="space-y-4 animate-fade-in-up">
                                     <div className="bg-emerald-50 p-3 rounded-xl text-sm text-emerald-800 border border-emerald-100 flex justify-between">
-                                        <span>已選：{selectedService.name}</span>
+                                        <span>課程：{selectedService.name}</span>
                                         <span className="font-bold">${selectedService.price}</span>
                                     </div>
-                                    <div onClick={() => handleStaffSelect({ id: 'any', name: '不指定人員', avatar: '', isAny: true })}
-                                        className="border border-dashed border-slate-300 rounded-2xl p-4 flex items-center hover:bg-emerald-50 cursor-pointer">
-                                        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mr-4 text-xl">⚡️</div>
+                                    <div onClick={() => handleStaffSelect({ id: 'any', name: '不指定老師', avatar: '', isAny: true })}
+                                        className="border border-dashed border-stone-300 rounded-2xl p-4 flex items-center hover:bg-emerald-50 cursor-pointer">
+                                        <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mr-4 text-xl">🧘</div>
                                         <div>
-                                            <h3 className="font-bold">不指定 (最快可約)</h3>
-                                            <p className="text-xs text-slate-400">系統自動安排</p>
+                                            <h3 className="font-bold text-stone-700">不指定 (最快可約)</h3>
+                                            <p className="text-xs text-stone-400">由系統安排合適教練</p>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         {STAFF.map(staff => (
                                             <div key={staff.id} onClick={() => handleStaffSelect(staff)}
-                                                className="border border-gray-100 rounded-2xl p-4 flex flex-col items-center hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white">
-                                                <img src={staff.avatar} className="w-16 h-16 rounded-full mb-2 bg-gray-50" />
-                                                <h3 className="font-bold text-slate-700">{staff.name}</h3>
-                                                <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded mt-1">{staff.title}</span>
+                                                className="border border-stone-100 rounded-2xl p-4 flex flex-col items-center hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white group">
+                                                <img src={staff.avatar} className="w-16 h-16 rounded-full mb-2 bg-stone-50 group-hover:scale-105 transition-transform" />
+                                                <h3 className="font-bold text-stone-700">{staff.name}</h3>
+                                                <span className="text-[10px] bg-stone-100 text-stone-500 px-2 py-1 rounded mt-1">{staff.title}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -180,13 +197,13 @@
                                 <div className="animate-fade-in-up">
                                     <div className="flex space-x-2 mb-6 text-xs">
                                         <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">{selectedService.name}</span>
-                                        <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full">{selectedStaff.name}</span>
+                                        <span className="bg-stone-100 text-stone-600 px-3 py-1 rounded-full">{selectedStaff.name}</span>
                                     </div>
-                                    <h3 className="font-bold mb-4 flex items-center"><Icon name="calendar" size={16} className="mr-2"/> 選擇今日時段</h3>
+                                    <h3 className="font-bold mb-4 flex items-center text-stone-700"><Icon name="calendar" size={16} className="mr-2"/> 選擇今日時段</h3>
                                     <div className="grid grid-cols-3 gap-3">
                                         {TIME_SLOTS.map(time => (
                                             <button key={time} onClick={() => handleTimeSelect(time)}
-                                                className="py-3 border rounded-xl hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition font-medium text-slate-600 active:scale-95">
+                                                className="py-3 border border-stone-200 rounded-xl hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition font-medium text-stone-600 active:scale-95">
                                                 {time}
                                             </button>
                                         ))}
@@ -197,33 +214,33 @@
                             {/* STEP 4: 資料 */}
                             {step === 4 && (
                                 <div className="space-y-6 animate-fade-in-up">
-                                    <div className="bg-white border border-gray-100 shadow-lg rounded-2xl overflow-hidden">
-                                        <div className="bg-emerald-500 p-3 text-white font-bold text-center">預約確認</div>
+                                    <div className="bg-white border border-stone-100 shadow-lg rounded-2xl overflow-hidden">
+                                        <div className="bg-emerald-600 p-3 text-white font-bold text-center">預約確認</div>
                                         <div className="p-5 space-y-3 text-sm">
-                                            <div className="flex justify-between"><span className="text-slate-400">項目</span><span className="font-medium">{selectedService.name}</span></div>
-                                            <div className="flex justify-between"><span className="text-slate-400">人員</span><span className="font-medium">{selectedStaff.name}</span></div>
-                                            <div className="flex justify-between"><span className="text-slate-400">時間</span><span className="font-bold text-emerald-600">今日 {selectedTime}</span></div>
-                                            <div className="pt-3 border-t flex justify-between items-center">
-                                                <span className="text-slate-400">費用</span>
-                                                <span className="text-xl font-bold text-slate-800">${selectedService.price}</span>
+                                            <div className="flex justify-between"><span className="text-stone-400">課程</span><span className="font-medium text-stone-700">{selectedService.name}</span></div>
+                                            <div className="flex justify-between"><span className="text-stone-400">老師</span><span className="font-medium text-stone-700">{selectedStaff.name}</span></div>
+                                            <div className="flex justify-between"><span className="text-stone-400">時間</span><span className="font-bold text-emerald-600">今日 {selectedTime}</span></div>
+                                            <div className="pt-3 border-t border-stone-100 flex justify-between items-center">
+                                                <span className="text-stone-400">費用</span>
+                                                <span className="text-xl font-bold text-stone-800">${selectedService.price}</span>
                                             </div>
                                         </div>
                                     </div>
                                     <div className="space-y-4">
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-400 mb-1 ml-1">姓名</label>
+                                            <label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">姓名</label>
                                             <input type="text" placeholder="您的稱呼" value={customerInfo.name} onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})}
-                                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"/>
+                                                className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"/>
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-400 mb-1 ml-1">手機</label>
+                                            <label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">手機</label>
                                             <input type="tel" placeholder="09xx-xxx-xxx" value={customerInfo.phone} 
                                                 onChange={(e) => { setCustomerInfo({...customerInfo, phone: e.target.value}); setError(''); }}
-                                                className={`w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 outline-none ${error ? 'border-red-500 bg-red-50' : 'border-gray-200 focus:ring-emerald-500'}`}/>
+                                                className={`w-full p-3 bg-stone-50 border rounded-xl focus:ring-2 outline-none ${error ? 'border-red-500 bg-red-50' : 'border-stone-200 focus:ring-emerald-500'}`}/>
                                             {error && <p className="text-red-500 text-xs mt-1 ml-1">{error}</p>}
                                         </div>
                                     </div>
-                                    <button onClick={handleConfirm} className="w-full bg-slate-800 text-white py-4 rounded-xl font-bold text-lg hover:bg-slate-900 shadow-xl active:scale-95 transition-all">確認預約</button>
+                                    <button onClick={handleConfirm} className="w-full bg-stone-800 text-white py-4 rounded-xl font-bold text-lg hover:bg-stone-900 shadow-xl active:scale-95 transition-all">確認預約</button>
                                 </div>
                             )}
 
@@ -233,20 +250,20 @@
                                     <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
                                         <Icon name="check" size={40} className="text-emerald-600" />
                                     </div>
-                                    <h2 className="text-2xl font-bold text-slate-800 mb-2">預約成功！</h2>
-                                    <p className="text-slate-500 text-sm mb-8">感謝您的預約，期待與您相見。</p>
+                                    <h2 className="text-2xl font-bold text-stone-800 mb-2">預約成功！</h2>
+                                    <p className="text-stone-500 text-sm mb-8">感謝您的預約，期待與您在墊上相見。</p>
 
-                                    <div className="bg-slate-50 p-6 rounded-2xl text-left mb-6 border border-gray-200">
+                                    <div className="bg-stone-50 p-6 rounded-2xl text-left mb-6 border border-stone-200">
                                         <div className="flex items-center mb-4">
                                             <Icon name="calendar" className="mr-3 text-emerald-500"/>
                                             <div>
-                                                <h3 className="font-bold text-slate-800">12月 25日 (今日)</h3>
+                                                <h3 className="font-bold text-stone-800">12月 25日 (今日)</h3>
                                                 <p className="text-emerald-600 font-bold">{selectedTime}</p>
                                             </div>
                                         </div>
-                                        <div className="text-sm text-slate-500 space-y-1 pl-9 border-l-2 border-gray-200 ml-2">
-                                            <p>服務：{selectedService.name}</p>
-                                            <p>人員：{selectedStaff.name}</p>
+                                        <div className="text-sm text-stone-500 space-y-1 pl-9 border-l-2 border-stone-200 ml-2">
+                                            <p>課程：{selectedService.name}</p>
+                                            <p>老師：{selectedStaff.name}</p>
                                             <p>電話：{customerInfo.phone}</p>
                                         </div>
                                     </div>
@@ -254,7 +271,7 @@
                                     <a href={STORE_INFO.lineUrl} target="_blank" className="block w-full bg-[#06c755] text-white py-3 rounded-xl font-bold hover:bg-[#05b34c] transition flex items-center justify-center shadow-lg shadow-green-500/20">
                                         <span className="mr-2 text-xl">💬</span> 加入 LINE 接收提醒
                                     </a>
-                                    <button onClick={() => window.location.reload()} className="block w-full text-slate-400 py-3 text-sm mt-2">返回首頁</button>
+                                    <button onClick={() => window.location.reload()} className="block w-full text-stone-400 py-3 text-sm mt-2 hover:text-stone-600">返回首頁</button>
                                 </div>
                             )}
                         </main>
