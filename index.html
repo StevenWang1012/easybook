@@ -18,6 +18,9 @@
     <!-- 4. 引入圖標庫 (Lucide Icons) -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
+    <!-- 5. ★ 引入 Supabase Client (與資料庫溝通的橋樑) -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; }
@@ -28,6 +31,17 @@
             100% { opacity: 1; transform: translateY(0); }
         }
         .animate-fade-in-up { animation: fade-in-up 0.5s ease-out forwards; }
+        
+        /* 載入中的轉圈圈動畫 */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #10b981;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800">
@@ -39,80 +53,151 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- 模擬資料庫 (改為瑜珈/皮拉提斯主題) ---
-        const STORE_INFO = {
-            name: "🧘‍♀️ Amber Flow 瑜珈空間",
-            address: "台北市中山區南京西路 88 號",
-            description: "找回身體的流動與平衡，專屬於您的身心修復時光。",
-            lineUrl: "https://line.me/ti/p/@example",
-            rating: 5.0
-        };
-
-        const SERVICES = [
-            { id: 's1', name: '器械皮拉提斯 (Reformer)', duration: 60, price: 1200, description: '1對1 指導，強化核心肌群與體態雕塑。', tag: '熱門' },
-            { id: 's2', name: '空中瑜珈 (Aerial Yoga)', duration: 60, price: 800, description: '利用掛布對抗地心引力，舒展脊椎與壓力。', tag: '推薦' },
-            { id: 's3', name: '基礎哈達瑜珈', duration: 75, price: 600, description: '適合初學者，透過呼吸與體位法找回平靜。', tag: '入門' },
-        ];
-
-        const STAFF = [
-            // 這裡把 Amber 放在第一位
-            { id: 'st1', name: 'Amber 老師', title: '創辦人 / 首席教練', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Amber&hair=long&clothing=shirt', rating: 5.0 },
-            { id: 'st2', name: 'Kelly 教練', title: '資深皮拉提斯指導', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Kelly&hair=bob', rating: 4.9 },
-            { id: 'st3', name: 'Leo 老師', title: '流動瑜珈師', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Leo&facialHair=beard', rating: 4.8 },
-        ];
+        // --- ★ 設定 Supabase 連線資訊 (Amber Flow) ---
+        // 這裡直接寫入 Key 是安全的，因為這是 anon (公開) key
+        const supabaseUrl = 'https://kwvbhzjzysmivafsvwng.supabase.co';
+        const supabaseKey = 'sb_publishable_7RUbenk2kXNDmvuo1XtHbQ_m0RjXuZr'; 
+        
+        // 建立連線實體 (使用 window.supabase 確保讀取到全域變數)
+        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
         const TIME_SLOTS = ['09:30', '10:30', '14:00', '15:30', '18:30', '19:45', '20:30'];
 
         // --- 主程式元件 ---
         function BookingApp() {
+            // --- 狀態管理 ---
             const [step, setStep] = useState(1);
+            
+            // 資料狀態 (從 DB 抓回來後放在這裡)
+            const [storeInfo, setStoreInfo] = useState(null);
+            const [services, setServices] = useState([]);
+            const [staffList, setStaffList] = useState([]);
+            const [loading, setLoading] = useState(true); // 載入中狀態
+            
+            // 選擇狀態
             const [selectedService, setSelectedService] = useState(null);
             const [selectedStaff, setSelectedStaff] = useState(null);
             const [selectedTime, setSelectedTime] = useState(null);
             const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '' });
             const [error, setError] = useState('');
+            const [isSubmitting, setIsSubmitting] = useState(false); // 送出中狀態
+
+            // --- ★ useEffect: 畫面載入時，去 Supabase 抓資料 ---
+            useEffect(() => {
+                async function fetchData() {
+                    try {
+                        setLoading(true);
+                        
+                        // 1. 抓取店家資訊 (只抓第一筆)
+                        const { data: stores, error: storeError } = await supabaseClient.from('stores').select('*').limit(1);
+                        if (storeError) throw storeError;
+                        
+                        if (stores && stores.length > 0) {
+                            // 補上資料庫沒有但 UI 需要的欄位 (rating, description)
+                            setStoreInfo({
+                                ...stores[0],
+                                description: "找回身體的流動與平衡，專屬於您的身心修復時光。", // 前端寫死的美化文案
+                                rating: 5.0,
+                                lineUrl: stores[0].line_url // 對應 DB 的 snake_case
+                            });
+                        }
+
+                        // 2. 抓取服務列表
+                        const { data: servicesData, error: serviceError } = await supabaseClient.from('services').select('*');
+                        if (serviceError) throw serviceError;
+                        setServices(servicesData || []);
+
+                        // 3. 抓取人員列表 (依照 rating 排序)
+                        const { data: staffData, error: staffError } = await supabaseClient.from('staff').select('*').order('rating', { ascending: false });
+                        if (staffError) throw staffError;
+                        setStaffList(staffData || []);
+
+                    } catch (err) {
+                        console.error("資料讀取失敗:", err);
+                        alert("連線發生錯誤，請稍後再試。");
+                    } finally {
+                        setLoading(false);
+                    }
+                }
+                
+                fetchData();
+            }, []);
 
             // --- 處理函式 ---
             const handleServiceSelect = (service) => { setSelectedService(service); setStep(2); };
             const handleStaffSelect = (staff) => { setSelectedStaff(staff); setStep(3); };
             const handleTimeSelect = (time) => { setSelectedTime(time); setStep(4); };
 
-            const handleConfirm = () => {
-                const phoneRegex = /^09\d{8}$/;
-                if (!phoneRegex.test(customerInfo.phone)) {
-                    setError('請輸入正確的 09 開頭 10 碼手機號碼');
+            // --- ★ 確認預約並寫入資料庫 ---
+            const handleConfirm = async () => {
+                // 驗證：確保輸入的是 8 位數字 (09 已經固定了)
+                const phoneSuffixRegex = /^\d{8}$/;
+                if (!phoneSuffixRegex.test(customerInfo.phone)) {
+                    setError('請輸入完整的手機號碼 (後 8 碼)');
                     return;
                 }
-                setStep(5);
+
+                // 組合完整號碼：09 + 用戶輸入的 8 碼
+                const fullPhoneNumber = '09' + customerInfo.phone;
+
+                setIsSubmitting(true);
+                try {
+                    // 寫入 Supabase 'bookings' 表
+                    const { error: insertError } = await supabaseClient.from('bookings').insert([
+                        {
+                            store_id: storeInfo.id,
+                            service_name: selectedService.name,
+                            staff_name: selectedStaff.name,
+                            booking_date: '2023-12-25', // 這裡暫時寫死今日日期，實作可換成 dynamic date
+                            booking_time: selectedTime,
+                            customer_name: customerInfo.name,
+                            customer_phone: fullPhoneNumber // ★ 存入完整號碼
+                        }
+                    ]);
+
+                    if (insertError) throw insertError;
+
+                    // 成功！
+                    setStep(5);
+                } catch (err) {
+                    console.error("預約寫入失敗:", err);
+                    alert("預約失敗，請檢查網路連線或稍後再試。");
+                } finally {
+                    setIsSubmitting(false);
+                }
             };
 
-            // --- 修復版圖標組件 (解決 React 白屏問題) ---
+            // --- 圖標組件 ---
             const Icon = ({ name, size = 20, className = "" }) => {
                 const ref = useRef(null);
-                
                 useEffect(() => {
                     if (!ref.current || !window.lucide) return;
-                    
                     const i = document.createElement('i');
                     i.setAttribute('data-lucide', name);
                     i.setAttribute('width', size);
                     i.setAttribute('height', size);
                     if (className) i.setAttribute('class', className);
-                    
                     ref.current.innerHTML = '';
                     ref.current.appendChild(i);
-                    
-                    window.lucide.createIcons({
-                        root: ref.current
-                    });
-                    
+                    window.lucide.createIcons({ root: ref.current });
                 }, [name, size, className]);
-
                 return <span ref={ref} className="inline-flex items-center justify-center"></span>;
             };
 
+            // --- 載入中畫面 ---
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+                        <div className="loader mb-4"></div>
+                        <p className="text-slate-500">正在喚醒 Amber 的資料庫...</p>
+                    </div>
+                );
+            }
+
+            if (!storeInfo) return <div className="text-center p-10">找不到店家資料，請確認資料庫已建立。</div>;
+
             return (
-                <div className="min-h-screen bg-gradient-to-br from-stone-50 to-emerald-50 flex justify-center p-4">
+                <div className="min-h-screen bg-gradient-to-br from-stone-50 to-emerald-50 flex justify-center p-4 relative">
                     <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl flex flex-col overflow-hidden relative border border-white/50 h-[85vh]">
                         
                         {/* 頂部導覽 */}
@@ -137,15 +222,15 @@
 
                         <main className="flex-1 p-5 overflow-y-auto custom-scrollbar">
                             
-                            {/* STEP 1: 服務 */}
+                            {/* STEP 1: 服務 (從 services 狀態讀取) */}
                             {step === 1 && (
                                 <div className="space-y-6 animate-fade-in-up">
                                     <div className="text-center py-4">
-                                        <h1 className="text-2xl font-bold text-stone-800">{STORE_INFO.name}</h1>
-                                        <p className="text-sm text-stone-500 mt-2 tracking-wide">{STORE_INFO.description}</p>
+                                        <h1 className="text-2xl font-bold text-stone-800">{storeInfo.name}</h1>
+                                        <p className="text-sm text-stone-500 mt-2 tracking-wide">{storeInfo.description}</p>
                                     </div>
                                     <div className="space-y-4">
-                                        {SERVICES.map(service => (
+                                        {services.map(service => (
                                             <div key={service.id} onClick={() => handleServiceSelect(service)} 
                                                 className="bg-white border border-stone-100 rounded-2xl p-5 hover:border-emerald-400 hover:shadow-lg cursor-pointer transition-all active:scale-95 group">
                                                 <div className="flex justify-between">
@@ -164,7 +249,7 @@
                                 </div>
                             )}
 
-                            {/* STEP 2: 人員 */}
+                            {/* STEP 2: 人員 (從 staffList 狀態讀取) */}
                             {step === 2 && (
                                 <div className="space-y-4 animate-fade-in-up">
                                     <div className="bg-emerald-50 p-3 rounded-xl text-sm text-emerald-800 border border-emerald-100 flex justify-between">
@@ -180,10 +265,10 @@
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
-                                        {STAFF.map(staff => (
+                                        {staffList.map(staff => (
                                             <div key={staff.id} onClick={() => handleStaffSelect(staff)}
                                                 className="border border-stone-100 rounded-2xl p-4 flex flex-col items-center hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white group">
-                                                <img src={staff.avatar} className="w-16 h-16 rounded-full mb-2 bg-stone-50 group-hover:scale-105 transition-transform" />
+                                                <img src={staff.avatar} className="w-16 h-16 rounded-full mb-2 bg-stone-50 group-hover:scale-105 transition-transform object-cover" />
                                                 <h3 className="font-bold text-stone-700">{staff.name}</h3>
                                                 <span className="text-[10px] bg-stone-100 text-stone-500 px-2 py-1 rounded mt-1">{staff.title}</span>
                                             </div>
@@ -234,13 +319,34 @@
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">手機</label>
-                                            <input type="tel" placeholder="09xx-xxx-xxx" value={customerInfo.phone} 
-                                                onChange={(e) => { setCustomerInfo({...customerInfo, phone: e.target.value}); setError(''); }}
-                                                className={`w-full p-3 bg-stone-50 border rounded-xl focus:ring-2 outline-none ${error ? 'border-red-500 bg-red-50' : 'border-stone-200 focus:ring-emerald-500'}`}/>
+                                            <div className="relative">
+                                                {/* ★ UI 修改：左側固定顯示 09 */}
+                                                <div className="absolute left-0 top-0 bottom-0 flex items-center pl-4 pointer-events-none">
+                                                    <span className="text-stone-500 font-bold border-r border-stone-300 pr-2 mr-2">09</span>
+                                                </div>
+                                                <input 
+                                                    type="tel" 
+                                                    maxLength="8"
+                                                    value={customerInfo.phone} 
+                                                    onChange={(e) => { 
+                                                        // ★ 邏輯修改：只能輸入數字
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        setCustomerInfo({...customerInfo, phone: val}); 
+                                                        setError(''); 
+                                                    }}
+                                                    className={`w-full pl-16 pr-4 py-3 bg-stone-50 border rounded-xl focus:ring-2 outline-none ${error ? 'border-red-500 bg-red-50' : 'border-stone-200 focus:ring-emerald-500'}`}
+                                                />
+                                            </div>
                                             {error && <p className="text-red-500 text-xs mt-1 ml-1">{error}</p>}
                                         </div>
                                     </div>
-                                    <button onClick={handleConfirm} className="w-full bg-stone-800 text-white py-4 rounded-xl font-bold text-lg hover:bg-stone-900 shadow-xl active:scale-95 transition-all">確認預約</button>
+                                    <button 
+                                        onClick={handleConfirm} 
+                                        disabled={isSubmitting}
+                                        className={`w-full text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-95 transition-all ${isSubmitting ? 'bg-stone-400 cursor-not-allowed' : 'bg-stone-800 hover:bg-stone-900'}`}
+                                    >
+                                        {isSubmitting ? '處理中...' : '確認預約'}
+                                    </button>
                                 </div>
                             )}
 
@@ -264,17 +370,24 @@
                                         <div className="text-sm text-stone-500 space-y-1 pl-9 border-l-2 border-stone-200 ml-2">
                                             <p>課程：{selectedService.name}</p>
                                             <p>老師：{selectedStaff.name}</p>
-                                            <p>電話：{customerInfo.phone}</p>
+                                            {/* ★ UI 修改：顯示完整號碼 */}
+                                            <p>電話：09{customerInfo.phone}</p>
                                         </div>
                                     </div>
 
-                                    <a href={STORE_INFO.lineUrl} target="_blank" className="block w-full bg-[#06c755] text-white py-3 rounded-xl font-bold hover:bg-[#05b34c] transition flex items-center justify-center shadow-lg shadow-green-500/20">
+                                    <a href={storeInfo.lineUrl} target="_blank" className="block w-full bg-[#06c755] text-white py-3 rounded-xl font-bold hover:bg-[#05b34c] transition flex items-center justify-center shadow-lg shadow-green-500/20">
                                         <span className="mr-2 text-xl">💬</span> 加入 LINE 接收提醒
                                     </a>
                                     <button onClick={() => window.location.reload()} className="block w-full text-stone-400 py-3 text-sm mt-2 hover:text-stone-600">返回首頁</button>
                                 </div>
                             )}
                         </main>
+                        
+                        {/* ★ 開發者模式：商家後台入口按鈕 (放置在 UI 內部的右下角) */}
+                        <a href="admin.html" className="absolute bottom-4 right-4 bg-slate-800/90 text-white px-3 py-2 rounded-lg shadow-lg hover:bg-emerald-600 transition-all z-50 backdrop-blur-sm flex items-center text-xs font-bold" title="前往商家後台">
+                            <Icon name="settings" size={14} className="mr-1" />
+                            開發模式
+                        </a>
                     </div>
                 </div>
             );
