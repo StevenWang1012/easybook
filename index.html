@@ -5,20 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Amber Flow 預約系統 (Demo)</title>
     
-    <!-- 1. 引入 Tailwind CSS (美化樣式) -->
+    <!-- 引入 Tailwind CSS (美化樣式) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 2. 引入 React 和 ReactDOM (核心引擎) -->
+    <!-- 引入 React 和 ReactDOM (核心引擎) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     
-    <!-- 3. 引入 Babel (讓瀏覽器看不懂的 JSX 轉成看得懂的 JS) -->
+    <!-- 引入 Babel (讓瀏覽器看不懂的 JSX 轉成看得懂的 JS) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 4. 引入圖標庫 (Lucide Icons) -->
+    <!-- 引入圖標庫 (Lucide Icons) -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <!-- 5. ★ 引入 Supabase Client (與資料庫溝通的橋樑) -->
+    <!-- ★ 引入 Supabase Client (與資料庫溝通的橋樑) -->
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
     <style>
@@ -53,15 +53,29 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- ★ 設定 Supabase 連線資訊 (Amber Flow) ---
-        // 這裡直接寫入 Key 是安全的，因為這是 anon (公開) key
+        // ★ 設定 Supabase 連線資訊 (Amber Flow)
         const supabaseUrl = 'https://kwvbhzjzysmivafsvwng.supabase.co';
         const supabaseKey = 'sb_publishable_7RUbenk2kXNDmvuo1XtHbQ_m0RjXuZr'; 
         
         // 建立連線實體 (使用 window.supabase 確保讀取到全域變數)
         const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-        const TIME_SLOTS = ['09:30', '10:30', '14:00', '15:30', '18:30', '19:45', '20:30'];
+        // ★ 動態生成 08:00 ~ 21:00 的 30 分鐘間隔時段
+        const generateTimeSlots = () => {
+            const slots = [];
+            let startHour = 8;
+            let endHour = 21; 
+
+            for (let h = startHour; h <= endHour; h++) {
+                slots.push(`${h.toString().padStart(2, '0')}:00`);
+                if (h < endHour) {
+                    slots.push(`${h.toString().padStart(2, '0')}:30`);
+                }
+            }
+            return slots;
+        };
+
+        const TIME_SLOTS = generateTimeSlots();
 
         // --- 主程式元件 ---
         function BookingApp() {
@@ -78,6 +92,16 @@
             const [selectedService, setSelectedService] = useState(null);
             const [selectedStaff, setSelectedStaff] = useState(null);
             const [selectedTime, setSelectedTime] = useState(null);
+            // ★ 新增：選擇的日期，預設為今日
+            const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+            
+            // ★ 新增：已佔用的時段 (從 DB 抓)
+            const [bookedSlots, setBookedSlots] = useState([]);
+            const [isCheckingSlots, setIsCheckingSlots] = useState(false);
+
+            // ★ 新增：注意事項 Modal 開關
+            const [showInfoModal, setShowInfoModal] = useState(false);
+
             const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '' });
             const [error, setError] = useState('');
             const [isSubmitting, setIsSubmitting] = useState(false); // 送出中狀態
@@ -88,29 +112,30 @@
                     try {
                         setLoading(true);
                         
-                        // 1. 抓取店家資訊 (只抓第一筆)
+                        // 1. 抓取店家資訊
                         const { data: stores, error: storeError } = await supabaseClient.from('stores').select('*').limit(1);
                         if (storeError) throw storeError;
                         
                         if (stores && stores.length > 0) {
-                            // 補上資料庫沒有但 UI 需要的欄位 (rating, description)
                             setStoreInfo({
                                 ...stores[0],
-                                description: "找回身體的流動與平衡，專屬於您的身心修復時光。", // 前端寫死的美化文案
+                                // 若 DB 沒這些欄位，前端補上預設值以防萬一
+                                description: stores[0].description || "找回身體的流動與平衡，專屬於您的身心修復時光。",
+                                address: stores[0].address || "台北市中山區南京西路 88 號",
                                 rating: 5.0,
-                                lineUrl: stores[0].line_url // 對應 DB 的 snake_case
+                                lineUrl: stores[0].line_url 
                             });
                         }
 
-                        // 2. 抓取服務列表
+                        // 2. 抓取服務列表 (過濾掉已刪除的)
                         const { data: servicesData, error: serviceError } = await supabaseClient.from('services').select('*');
                         if (serviceError) throw serviceError;
-                        setServices(servicesData || []);
+                        if (servicesData) setServices(servicesData.filter(i => !i.deleted_at));
 
-                        // 3. 抓取人員列表 (依照 rating 排序)
+                        // 3. 抓取人員列表 (過濾掉已刪除的)
                         const { data: staffData, error: staffError } = await supabaseClient.from('staff').select('*').order('rating', { ascending: false });
                         if (staffError) throw staffError;
-                        setStaffList(staffData || []);
+                        if (staffData) setStaffList(staffData.filter(i => !i.deleted_at));
 
                     } catch (err) {
                         console.error("資料讀取失敗:", err);
@@ -122,6 +147,35 @@
                 
                 fetchData();
             }, []);
+
+            // ★ 當進入「選擇時間」步驟時，或者切換日期時，去抓取該教練的行程
+            useEffect(() => {
+                if (step === 3 && selectedStaff) {
+                    fetchAvailability();
+                }
+            }, [step, selectedDate, selectedStaff]);
+
+            async function fetchAvailability() {
+                setIsCheckingSlots(true);
+                // 抓取該教練、該日期的所有訂單 (包含 confirmed 和 blocked)
+                const query = supabaseClient
+                    .from('bookings')
+                    .select('booking_time')
+                    .eq('booking_date', selectedDate)
+                    .neq('status', 'cancelled'); 
+
+                // 如果有指定教練才查該教練，若不指定則視為全店 (MVP 先簡化邏輯)
+                if (!selectedStaff.isAny) {
+                    query.eq('staff_name', selectedStaff.name);
+                }
+
+                const { data, error } = await query;
+                if (data) {
+                    const times = data.map(b => b.booking_time);
+                    setBookedSlots(times);
+                }
+                setIsCheckingSlots(false);
+            }
 
             // --- 處理函式 ---
             const handleServiceSelect = (service) => { setSelectedService(service); setStep(2); };
@@ -148,10 +202,11 @@
                             store_id: storeInfo.id,
                             service_name: selectedService.name,
                             staff_name: selectedStaff.name,
-                            booking_date: '2023-12-25', // 這裡暫時寫死今日日期，實作可換成 dynamic date
+                            booking_date: selectedDate, // 使用選擇的日期
                             booking_time: selectedTime,
                             customer_name: customerInfo.name,
-                            customer_phone: fullPhoneNumber // ★ 存入完整號碼
+                            customer_phone: fullPhoneNumber,
+                            status: 'confirmed' // 預設狀態
                         }
                     ]);
 
@@ -161,7 +216,7 @@
                     setStep(5);
                 } catch (err) {
                     console.error("預約寫入失敗:", err);
-                    alert("預約失敗，請檢查網路連線或稍後再試。");
+                    alert("預約失敗，該時段可能剛剛被搶走了，請重試！");
                 } finally {
                     setIsSubmitting(false);
                 }
@@ -225,10 +280,26 @@
                             {/* STEP 1: 服務 (從 services 狀態讀取) */}
                             {step === 1 && (
                                 <div className="space-y-6 animate-fade-in-up">
-                                    <div className="text-center py-4">
-                                        <h1 className="text-2xl font-bold text-stone-800">{storeInfo.name}</h1>
-                                        <p className="text-sm text-stone-500 mt-2 tracking-wide">{storeInfo.description}</p>
+                                    {/* ★ 店家 Header (標題 + 描述 + 地點 + Info) */}
+                                    <div className="text-center py-4 relative">
+                                        <div className="flex items-center justify-center mb-2">
+                                            <h1 className="text-2xl font-bold text-stone-800">{storeInfo.name}</h1>
+                                            {/* 注意事項按鈕 */}
+                                            <button 
+                                                onClick={() => setShowInfoModal(true)}
+                                                className="ml-2 text-stone-400 hover:text-emerald-600 transition-colors"
+                                            >
+                                                <Icon name="info" size={20} />
+                                            </button>
+                                        </div>
+                                        <p className="text-sm text-stone-500 mt-1 tracking-wide px-4 whitespace-pre-wrap">{storeInfo.description}</p>
+                                        {/* 地點顯示 */}
+                                        <div className="flex items-center justify-center mt-3 text-xs text-stone-400">
+                                            <Icon name="map-pin" size={14} className="mr-1 text-emerald-500" />
+                                            {storeInfo.address}
+                                        </div>
                                     </div>
+
                                     <div className="space-y-4">
                                         {services.map(service => (
                                             <div key={service.id} onClick={() => handleServiceSelect(service)} 
@@ -277,21 +348,53 @@
                                 </div>
                             )}
 
-                            {/* STEP 3: 時間 */}
+                            {/* STEP 3: 時間 (動態時段) */}
                             {step === 3 && (
                                 <div className="animate-fade-in-up">
                                     <div className="flex space-x-2 mb-6 text-xs">
                                         <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">{selectedService.name}</span>
                                         <span className="bg-stone-100 text-stone-600 px-3 py-1 rounded-full">{selectedStaff.name}</span>
                                     </div>
-                                    <h3 className="font-bold mb-4 flex items-center text-stone-700"><Icon name="calendar" size={16} className="mr-2"/> 選擇今日時段</h3>
-                                    <div className="grid grid-cols-3 gap-3">
-                                        {TIME_SLOTS.map(time => (
-                                            <button key={time} onClick={() => handleTimeSelect(time)}
-                                                className="py-3 border border-stone-200 rounded-xl hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition font-medium text-stone-600 active:scale-95">
-                                                {time}
-                                            </button>
-                                        ))}
+                                    
+                                    {/* 日期選擇器 */}
+                                    <div className="mb-6">
+                                        <label className="block text-xs font-bold text-stone-400 mb-2 uppercase">預約日期</label>
+                                        <input 
+                                            type="date" 
+                                            value={selectedDate} 
+                                            onChange={e => setSelectedDate(e.target.value)}
+                                            className="w-full p-3 bg-white border border-stone-200 rounded-xl font-bold text-stone-700"
+                                        />
+                                    </div>
+
+                                    <h3 className="font-bold mb-4 flex items-center text-stone-700">
+                                        <Icon name="calendar" size={16} className="mr-2"/> 
+                                        選擇時段
+                                        {isCheckingSlots && <span className="ml-2 text-xs font-normal text-slate-400">查詢中...</span>}
+                                    </h3>
+                                    
+                                    {/* 4 欄排版 */}
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {TIME_SLOTS.map(time => {
+                                            // 檢查是否被佔用
+                                            const isTaken = bookedSlots.includes(time);
+                                            
+                                            return (
+                                                <button 
+                                                    key={time} 
+                                                    onClick={() => !isTaken && handleTimeSelect(time)}
+                                                    disabled={isTaken}
+                                                    className={`py-2 px-1 border rounded-lg text-sm font-medium transition active:scale-95 flex flex-col items-center justify-center
+                                                        ${isTaken 
+                                                            ? 'bg-stone-100 text-stone-300 border-stone-100 cursor-not-allowed' 
+                                                            : 'bg-white hover:bg-emerald-600 hover:text-white hover:border-emerald-600 text-stone-600 border-stone-200'}`}
+                                                >
+                                                    {time}
+                                                    {/* 如果額滿，顯示小字 */}
+                                                    {isTaken && <span className="text-[9px] font-normal">已額滿</span>}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -304,7 +407,7 @@
                                         <div className="p-5 space-y-3 text-sm">
                                             <div className="flex justify-between"><span className="text-stone-400">課程</span><span className="font-medium text-stone-700">{selectedService.name}</span></div>
                                             <div className="flex justify-between"><span className="text-stone-400">老師</span><span className="font-medium text-stone-700">{selectedStaff.name}</span></div>
-                                            <div className="flex justify-between"><span className="text-stone-400">時間</span><span className="font-bold text-emerald-600">今日 {selectedTime}</span></div>
+                                            <div className="flex justify-between"><span className="text-stone-400">時間</span><span className="font-bold text-emerald-600">{selectedDate} {selectedTime}</span></div>
                                             <div className="pt-3 border-t border-stone-100 flex justify-between items-center">
                                                 <span className="text-stone-400">費用</span>
                                                 <span className="text-xl font-bold text-stone-800">${selectedService.price}</span>
@@ -320,7 +423,7 @@
                                         <div>
                                             <label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">手機</label>
                                             <div className="relative">
-                                                {/* ★ UI 修改：左側固定顯示 09 */}
+                                                {/* UI 修改：左側固定顯示 09 */}
                                                 <div className="absolute left-0 top-0 bottom-0 flex items-center pl-4 pointer-events-none">
                                                     <span className="text-stone-500 font-bold border-r border-stone-300 pr-2 mr-2">09</span>
                                                 </div>
@@ -329,7 +432,7 @@
                                                     maxLength="8"
                                                     value={customerInfo.phone} 
                                                     onChange={(e) => { 
-                                                        // ★ 邏輯修改：只能輸入數字
+                                                        // 邏輯修改：只能輸入數字
                                                         const val = e.target.value.replace(/\D/g, '');
                                                         setCustomerInfo({...customerInfo, phone: val}); 
                                                         setError(''); 
@@ -363,14 +466,14 @@
                                         <div className="flex items-center mb-4">
                                             <Icon name="calendar" className="mr-3 text-emerald-500"/>
                                             <div>
-                                                <h3 className="font-bold text-stone-800">12月 25日 (今日)</h3>
+                                                <h3 className="font-bold text-stone-800">{selectedDate}</h3>
                                                 <p className="text-emerald-600 font-bold">{selectedTime}</p>
                                             </div>
                                         </div>
                                         <div className="text-sm text-stone-500 space-y-1 pl-9 border-l-2 border-stone-200 ml-2">
                                             <p>課程：{selectedService.name}</p>
                                             <p>老師：{selectedStaff.name}</p>
-                                            {/* ★ UI 修改：顯示完整號碼 */}
+                                            {/* UI 修改：顯示完整號碼 */}
                                             <p>電話：09{customerInfo.phone}</p>
                                         </div>
                                     </div>
@@ -383,11 +486,41 @@
                             )}
                         </main>
                         
-                        {/* ★ 開發者模式：商家後台入口按鈕 (放置在 UI 內部的右下角) */}
+                        {/* ★ 開發者模式：商家後台入口按鈕 (放在 UI 內部的右下角) */}
                         <a href="admin.html" className="absolute bottom-4 right-4 bg-slate-800/90 text-white px-3 py-2 rounded-lg shadow-lg hover:bg-emerald-600 transition-all z-50 backdrop-blur-sm flex items-center text-xs font-bold" title="前往商家後台">
                             <Icon name="settings" size={14} className="mr-1" />
                             開發模式
                         </a>
+
+                        {/* ★ 注意事項 Modal (彈跳視窗) */}
+                        {showInfoModal && (
+                            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6 backdrop-blur-sm animate-fade-in-up">
+                                <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm relative">
+                                    <button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+                                        <Icon name="x" size={24} />
+                                    </button>
+                                    <h3 className="text-xl font-bold text-stone-800 mb-4 flex items-center">
+                                        <Icon name="info" className="mr-2 text-emerald-500" />
+                                        課程預約須知
+                                    </h3>
+                                    <div className="text-sm text-stone-600 space-y-3 leading-relaxed whitespace-pre-wrap">
+                                        {storeInfo.terms || `歡迎來到 Amber Flow！為了維護課程品質，請您留意以下事項：
+                                        
+1. 請著輕便運動服裝，並自備毛巾與水壺。
+2. 請提前 5-10 分鐘 抵達教室，進行更衣與暖身準備。
+3. 上課期間請將手機調整為靜音，專注於當下。
+4. 若有心血管疾病、懷孕或舊傷，請務必於課前告知老師。
+
+取消政策：
+如需取消或更改預約，請於課程開始前 24 小時 透過 LINE 或系統告知，以免影響您未來的預約權益。`}
+                                    </div>
+                                    <button onClick={() => setShowInfoModal(false)} className="w-full mt-6 bg-stone-800 text-white py-3 rounded-xl font-bold hover:bg-stone-900 transition">
+                                        我了解了
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                     </div>
                 </div>
             );
