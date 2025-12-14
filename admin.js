@@ -33,33 +33,56 @@ const Icon = ({ name, size = 20, className = "" }) => {
     return <span ref={ref} className="inline-flex items-center justify-center"></span>;
 };
 
-// --- 1. 儀表板 ---
+// --- 1. 儀表板 (已新增錯誤處理) ---
 function DashboardView({ supabase }) {
     const [bookings, setBookings] = useState([]);
     const [stats, setStats] = useState({ count: 0, revenue: 0 });
     const [loading, setLoading] = useState(false);
+    const [errorMsg, setErrorMsg] = useState('');
 
     useEffect(() => { fetchBookings(); }, []);
 
     async function fetchBookings() {
         setLoading(true);
-        const { data, error } = await supabase.from('bookings').select('*').order('created_at', { ascending: false });
-        if (!error && data) {
-            setBookings(data);
-            const validBookings = data.filter(b => b.status !== 'cancelled' && b.status !== 'blocked');
-            setStats({ count: validBookings.length, revenue: validBookings.length * 1200 });
+        setErrorMsg('');
+        
+        try {
+            const { data, error } = await supabase.from('bookings').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+
+            if (data) {
+                setBookings(data);
+                const validBookings = data.filter(b => b.status !== 'cancelled' && b.status !== 'blocked');
+                setStats({ count: validBookings.length, revenue: validBookings.length * 1200 });
+            }
+        } catch (err) {
+            console.error("讀取失敗:", err);
+            setErrorMsg(err.message || "無法讀取預約資料，請檢查網路連線或稍後再試。");
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     }
 
     async function updateStatus(id, newStatus) {
         if(!confirm(`確定要更改狀態為「${newStatus}」嗎？`)) return;
-        const { error } = await supabase.from('bookings').update({ status: newStatus }).eq('id', id);
-        if (!error) fetchBookings();
+        try {
+            const { error } = await supabase.from('bookings').update({ status: newStatus }).eq('id', id);
+            if (error) throw error;
+            fetchBookings();
+        } catch (err) {
+            console.error("更新失敗:", err);
+            alert("更新狀態失敗: " + err.message);
+        }
     }
 
     return (
         <div className="space-y-8">
+            {errorMsg && (
+                <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-sm flex justify-between items-center mb-4">
+                    <div className="flex items-center"><Icon name="alert-circle" className="mr-2" /><div><p className="font-bold">系統發生錯誤</p><p className="text-sm">{errorMsg}</p></div></div>
+                    <button onClick={fetchBookings} className="bg-red-100 hover:bg-red-200 text-red-800 text-sm font-bold py-2 px-4 rounded transition">重試</button>
+                </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <div className="flex justify-between items-start mb-4">
@@ -202,7 +225,6 @@ function ScheduleManager({ supabase }) {
         const startIndex = ALL_TIME_SLOTS.indexOf(leaveData.start);
         const endIndex = ALL_TIME_SLOTS.indexOf(leaveData.end);
         if (startIndex === -1 || endIndex === -1) return alert("時間範圍無效");
-        // 單點時 start=end，要包含該點
         const effectiveEndIndex = endIndex === startIndex ? startIndex + 1 : endIndex;
         if (startIndex > effectiveEndIndex) return alert("時間範圍無效");
 
@@ -290,17 +312,23 @@ function ScheduleManager({ supabase }) {
 // --- 3. 課程服務管理 ---
 function ServiceManager({ supabase }) {
     const [services, setServices] = useState([]);
+    const [staffList, setStaffList] = useState([]);
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({ id: null, name: '', price: 1000, duration: 60, description: '' });
 
-    useEffect(() => { fetchServices(); }, []);
+    useEffect(() => { fetchServices(); fetchStaff(); }, []);
 
     async function fetchServices() {
         setLoading(true);
         const { data, error } = await supabase.from('services').select('*');
         if (!error && data) setServices(data.filter(item => !item.deleted_at));
         setLoading(false);
+    }
+
+    async function fetchStaff() {
+        const { data } = await supabase.from('staff').select('*');
+        if (data) setStaffList(data.filter(item => !item.deleted_at));
     }
 
     async function handleDelete(id, name) {
@@ -352,12 +380,12 @@ function ServiceManager({ supabase }) {
     );
 }
 
-// --- 4. 人員管理 ---
+// --- 4. 人員管理 (已優化：顯示密碼 & 隨機生成) ---
 function StaffManager({ supabase }) {
     const [staff, setStaff] = useState([]);
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [formData, setFormData] = useState({ id: null, name: '', title: '', avatar: '' });
+    const [formData, setFormData] = useState({ id: null, name: '', title: '', avatar: '', login_code: '0000' });
     const fileInputRef = useRef(null);
 
     useEffect(() => { fetchStaff(); }, []);
@@ -404,7 +432,7 @@ function StaffManager({ supabase }) {
         const { data: stores } = await supabase.from('stores').select('id').limit(1);
         const storeId = stores[0]?.id;
         const finalAvatar = formData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name}`;
-        const payload = { name: formData.name, title: formData.title, store_id: storeId, avatar: finalAvatar, rating: 5.0 };
+        const payload = { name: formData.name, title: formData.title, store_id: storeId, avatar: finalAvatar, rating: 5.0, login_code: formData.login_code };
         let error;
         if (formData.id) error = (await supabase.from('staff').update(payload).eq('id', formData.id)).error;
         else error = (await supabase.from('staff').insert([payload])).error;
@@ -412,9 +440,25 @@ function StaffManager({ supabase }) {
     }
 
     function openEdit(person = null) {
-        setFormData(person || { id: null, name: '', title: '', avatar: '' });
+        setFormData(person || { id: null, name: '', title: '', avatar: '', login_code: '0000' });
         setIsEditing(true);
     }
+
+    // ★ 新增：隨機產生密碼 (已更新為強密碼)
+    const generateRandomCode = () => {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'; // 排除容易混淆的 1, l, I, 0, O
+        let code = '';
+        for (let i = 0; i < 6; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        setFormData(prev => ({ ...prev, login_code: code }));
+    };
+
+    const copyLink = (id) => {
+        const url = `${window.location.origin}/staff.html?id=${id}`;
+        navigator.clipboard.writeText(url);
+        alert("已複製老師專屬連結！\n請貼到 LINE 給老師：" + url);
+    };
 
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -424,17 +468,42 @@ function StaffManager({ supabase }) {
                     <h4 className="font-bold text-lg text-emerald-800 mb-4">{formData.id ? '編輯人員' : '新增人員'}</h4>
                     <div className="flex flex-col md:flex-row gap-6">
                         <div className="flex flex-col items-center"><div className="w-24 h-24 rounded-full bg-gray-200 overflow-hidden mb-2 border-4 border-white shadow-sm"><img src={formData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name || 'default'}`} className="w-full h-full object-cover" /></div><button onClick={() => fileInputRef.current.click()} className="text-xs bg-slate-200 hover:bg-slate-300 px-2 py-1 rounded">上傳照片</button><input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} /></div>
-                        <div className="flex-1 grid grid-cols-1 gap-4"><div><label className="text-xs text-slate-500 font-bold">姓名</label><input className="w-full p-2 border rounded" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div><div><label className="text-xs text-slate-500 font-bold">職稱</label><input className="w-full p-2 border rounded" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} /></div></div>
+                        <div className="flex-1 grid grid-cols-1 gap-4">
+                            <div><label className="text-xs text-slate-500 font-bold">姓名</label><input className="w-full p-2 border rounded" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+                            <div><label className="text-xs text-slate-500 font-bold">職稱</label><input className="w-full p-2 border rounded" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} /></div>
+                            {/* ★ 優化：增加隨機按鈕 */}
+                            <div>
+                                <label className="text-xs text-slate-500 font-bold">後台登入碼 (Passcode)</label>
+                                <div className="flex gap-2">
+                                    <input type="text" maxLength="6" placeholder="例如: Xy7z" className="flex-1 p-2 border rounded font-mono tracking-widest text-center font-bold text-emerald-600" value={formData.login_code} onChange={e => setFormData({...formData, login_code: e.target.value})} />
+                                    <button onClick={generateRandomCode} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 rounded text-slate-600 font-bold text-xs">🎲 隨機</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div className="flex justify-end space-x-2 mt-4 border-t border-gray-200 pt-4"><button onClick={() => setIsEditing(false)} className="px-4 py-2 text-slate-500 hover:bg-gray-200 rounded">取消</button><button onClick={handleSubmit} className="px-4 py-2 bg-emerald-600 text-white rounded font-bold hover:bg-emerald-700">{formData.id ? '更新資料' : '確認新增'}</button></div>
                 </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{loading ? <div className="text-center text-slate-400 py-4 col-span-2">讀取中...</div> : staff.map(s => (<div key={s.id} className="flex items-center p-4 border border-gray-100 rounded-xl bg-white hover:border-emerald-200 transition"><img src={s.avatar} className="w-12 h-12 rounded-full bg-gray-200 mr-4 object-cover" /><div className="flex-1"><div className="font-bold text-slate-700">{s.name}</div><div className="text-xs text-slate-400">{s.title}</div></div><div className="flex space-x-1"><button onClick={() => openEdit(s)} className="text-blue-500 hover:bg-blue-50 p-2 rounded" title="編輯"><Icon name="edit" size={18}/></button><button onClick={() => handleDelete(s.id, s.name)} className="text-red-400 hover:bg-red-50 p-2 rounded" title="移除"><Icon name="trash-2" size={18}/></button></div></div>))}</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{loading ? <div className="text-center text-slate-400 py-4 col-span-2">讀取中...</div> : staff.map(s => (
+                <div key={s.id} className="flex items-center p-4 border border-gray-100 rounded-xl bg-white hover:border-emerald-200 transition">
+                    <img src={s.avatar} className="w-12 h-12 rounded-full bg-gray-200 mr-4 object-cover" />
+                    <div className="flex-1">
+                        <div className="font-bold text-slate-700">{s.name}</div>
+                        <div className="flex items-center text-xs text-slate-400 mb-2">
+                            <span className="mr-2">{s.title}</span>
+                            {/* ★ 優化：直接顯示密碼 */}
+                            <span className="bg-slate-100 px-2 py-0.5 rounded font-mono text-slate-500">Code: <strong>{s.login_code || '0000'}</strong></span>
+                        </div>
+                        <button onClick={() => copyLink(s.id)} className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-1.5 rounded hover:bg-emerald-100 flex items-center w-fit font-bold"><Icon name="link" size={12} className="mr-1"/> 複製專屬連結</button>
+                    </div>
+                    <div className="flex space-x-1"><button onClick={() => openEdit(s)} className="text-blue-500 hover:bg-blue-50 p-2 rounded" title="編輯"><Icon name="edit" size={18}/></button><button onClick={() => handleDelete(s.id, s.name)} className="text-red-400 hover:bg-red-50 p-2 rounded" title="移除"><Icon name="trash-2" size={18}/></button></div>
+                </div>
+            ))}</div>
         </div>
     );
 }
 
-// --- 5. 商店設定管理 (新增) ---
+// --- 5. 商店設定管理 ---
 function SettingsManager({ supabase }) {
     const [store, setStore] = useState({ name: '', address: '', line_url: '', description: '', terms: '' });
     const [loading, setLoading] = useState(false);

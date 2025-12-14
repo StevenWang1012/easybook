@@ -3,531 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amber Flow 預約系統 (Demo)</title>
-    
-    <!-- 引入 Tailwind CSS (美化樣式) -->
+    <title>Amber Flow - 專為個人工作室打造的預約系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 引入 React 和 ReactDOM (核心引擎) -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
-    <!-- 引入 Babel (讓瀏覽器看不懂的 JSX 轉成看得懂的 JS) -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- 引入圖標庫 (Lucide Icons) -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-
-    <!-- ★ 引入 Supabase Client (與資料庫溝通的橋樑) -->
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
-        @keyframes fade-in-up {
-            0% { opacity: 0; transform: translateY(10px); }
-            100% { opacity: 1; transform: translateY(0); }
+        .hero-pattern {
+            background-color: #f0fdf4;
+            background-image: radial-gradient(#10b981 0.5px, transparent 0.5px);
+            background-size: 20px 20px;
         }
-        .animate-fade-in-up { animation: fade-in-up 0.5s ease-out forwards; }
-        
-        /* 載入中的轉圈圈動畫 */
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #10b981;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-800">
+<body class="bg-slate-50 text-slate-800">
 
-    <!-- 這是 React 程式掛載的根目錄 -->
-    <div id="root"></div>
-
-    <!-- 這裡是 React 程式碼邏輯 -->
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-
-        // ★ 設定 Supabase 連線資訊 (Amber Flow)
-        const supabaseUrl = 'https://kwvbhzjzysmivafsvwng.supabase.co';
-        const supabaseKey = 'sb_publishable_7RUbenk2kXNDmvuo1XtHbQ_m0RjXuZr'; 
+    <!-- Hero Section -->
+    <div class="hero-pattern min-h-[60vh] flex flex-col items-center justify-center text-center px-4 relative overflow-hidden border-b border-emerald-100">
+        <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent to-slate-50"></div>
         
-        // 建立連線實體 (使用 window.supabase 確保讀取到全域變數)
-        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+        <div class="z-10 max-w-3xl mx-auto">
+            <div class="inline-flex items-center bg-white px-3 py-1 rounded-full shadow-sm border border-emerald-100 mb-6 animate-bounce">
+                <span class="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>
+                <span class="text-xs font-bold text-emerald-700">v2.0 全新發布：支援員工獨立後台</span>
+            </div>
+            <h1 class="text-5xl md:text-6xl font-black text-slate-900 mb-6 tracking-tight leading-tight">
+                讓預約管理，<br>
+                像呼吸一樣<span class="text-emerald-600">自然流動</span>。
+            </h1>
+            <p class="text-lg md:text-xl text-slate-500 mb-10 leading-relaxed">
+                專為瑜珈、皮拉提斯、個人工作室設計的 No-Code 解決方案。<br>
+                無需下載 App，無需複雜設定，打開網頁即刻啟用。
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="#demo" class="bg-emerald-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition transform hover:-translate-y-1">
+                    立即體驗 Demo
+                </a>
+                <a href="https://github.com/yourusername/amber-flow" target="_blank" class="bg-white text-slate-700 border border-slate-200 px-8 py-4 rounded-xl font-bold text-lg hover:bg-slate-50 transition flex items-center justify-center">
+                    <i class="fab fa-github mr-2"></i> 查看原始碼
+                </a>
+            </div>
+        </div>
+    </div>
 
-        // ★ 動態生成 08:00 ~ 21:00 的 30 分鐘間隔時段
-        const generateTimeSlots = () => {
-            const slots = [];
-            let startHour = 8;
-            let endHour = 21; 
+    <!-- Feature Grid -->
+    <div class="max-w-6xl mx-auto px-6 py-20">
+        <div class="grid md:grid-cols-3 gap-8">
+            <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-xl transition duration-300">
+                <div class="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 text-2xl mb-6">
+                    <i class="fas fa-calendar-check"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3">極簡預約前台</h3>
+                <p class="text-slate-500 leading-relaxed">
+                    直覺的 3 步驟預約流程，支援動態時段計算。自動過濾額滿時段，防止超賣，給客戶最流暢的體驗。
+                </p>
+            </div>
+            <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-xl transition duration-300">
+                <div class="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 text-2xl mb-6">
+                    <i class="fas fa-chart-pie"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3">老闆總控中心</h3>
+                <p class="text-slate-500 leading-relaxed">
+                    一覽全店營收與訂單。具備強大的排班管理功能，可批次設定休假，並管理所有人員與課程資料。
+                </p>
+            </div>
+            <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-xl transition duration-300">
+                <div class="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600 text-2xl mb-6">
+                    <i class="fas fa-mobile-alt"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3">員工專屬 App</h3>
+                <p class="text-slate-500 leading-relaxed">
+                    每位老師擁有獨立登入碼。手機即時查看課表與業績，不再需要一直問老闆「明天幾點有課？」。
+                </p>
+            </div>
+        </div>
+    </div>
 
-            for (let h = startHour; h <= endHour; h++) {
-                slots.push(`${h.toString().padStart(2, '0')}:00`);
-                if (h < endHour) {
-                    slots.push(`${h.toString().padStart(2, '0')}:30`);
-                }
-            }
-            return slots;
-        };
+    <!-- Demo Section -->
+    <div id="demo" class="bg-slate-900 text-white py-24">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">親自試玩看看</h2>
+                <p class="text-slate-400">我們準備了三個角色的入口，請點擊下方按鈕體驗。</p>
+            </div>
 
-        const TIME_SLOTS = generateTimeSlots();
-
-        // --- 主程式元件 ---
-        function BookingApp() {
-            // --- 狀態管理 ---
-            const [step, setStep] = useState(1);
-            
-            // 資料狀態 (從 DB 抓回來後放在這裡)
-            const [storeInfo, setStoreInfo] = useState(null);
-            const [services, setServices] = useState([]);
-            const [staffList, setStaffList] = useState([]);
-            const [loading, setLoading] = useState(true); // 載入中狀態
-            
-            // 選擇狀態
-            const [selectedService, setSelectedService] = useState(null);
-            const [selectedStaff, setSelectedStaff] = useState(null);
-            const [selectedTime, setSelectedTime] = useState(null);
-            // ★ 新增：選擇的日期，預設為今日
-            const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-            
-            // ★ 新增：已佔用的時段 (從 DB 抓)
-            const [bookedSlots, setBookedSlots] = useState([]);
-            const [isCheckingSlots, setIsCheckingSlots] = useState(false);
-
-            // ★ 新增：注意事項 Modal 開關
-            const [showInfoModal, setShowInfoModal] = useState(false);
-
-            const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '' });
-            const [error, setError] = useState('');
-            const [isSubmitting, setIsSubmitting] = useState(false); // 送出中狀態
-
-            // --- ★ useEffect: 畫面載入時，去 Supabase 抓資料 ---
-            useEffect(() => {
-                async function fetchData() {
-                    try {
-                        setLoading(true);
-                        
-                        // 1. 抓取店家資訊
-                        const { data: stores, error: storeError } = await supabaseClient.from('stores').select('*').limit(1);
-                        if (storeError) throw storeError;
-                        
-                        if (stores && stores.length > 0) {
-                            setStoreInfo({
-                                ...stores[0],
-                                // 若 DB 沒這些欄位，前端補上預設值以防萬一
-                                description: stores[0].description || "找回身體的流動與平衡，專屬於您的身心修復時光。",
-                                address: stores[0].address || "台北市中山區南京西路 88 號",
-                                rating: 5.0,
-                                lineUrl: stores[0].line_url 
-                            });
-                        }
-
-                        // 2. 抓取服務列表 (過濾掉已刪除的)
-                        const { data: servicesData, error: serviceError } = await supabaseClient.from('services').select('*');
-                        if (serviceError) throw serviceError;
-                        if (servicesData) setServices(servicesData.filter(i => !i.deleted_at));
-
-                        // 3. 抓取人員列表 (過濾掉已刪除的)
-                        const { data: staffData, error: staffError } = await supabaseClient.from('staff').select('*').order('rating', { ascending: false });
-                        if (staffError) throw staffError;
-                        if (staffData) setStaffList(staffData.filter(i => !i.deleted_at));
-
-                    } catch (err) {
-                        console.error("資料讀取失敗:", err);
-                        alert("連線發生錯誤，請稍後再試。");
-                    } finally {
-                        setLoading(false);
-                    }
-                }
-                
-                fetchData();
-            }, []);
-
-            // ★ 當進入「選擇時間」步驟時，或者切換日期時，去抓取該教練的行程
-            useEffect(() => {
-                if (step === 3 && selectedStaff) {
-                    fetchAvailability();
-                }
-            }, [step, selectedDate, selectedStaff]);
-
-            async function fetchAvailability() {
-                setIsCheckingSlots(true);
-                // 抓取該教練、該日期的所有訂單 (包含 confirmed 和 blocked)
-                const query = supabaseClient
-                    .from('bookings')
-                    .select('booking_time')
-                    .eq('booking_date', selectedDate)
-                    .neq('status', 'cancelled'); 
-
-                // 如果有指定教練才查該教練，若不指定則視為全店 (MVP 先簡化邏輯)
-                if (!selectedStaff.isAny) {
-                    query.eq('staff_name', selectedStaff.name);
-                }
-
-                const { data, error } = await query;
-                if (data) {
-                    const times = data.map(b => b.booking_time);
-                    setBookedSlots(times);
-                }
-                setIsCheckingSlots(false);
-            }
-
-            // --- 處理函式 ---
-            const handleServiceSelect = (service) => { setSelectedService(service); setStep(2); };
-            const handleStaffSelect = (staff) => { setSelectedStaff(staff); setStep(3); };
-            const handleTimeSelect = (time) => { setSelectedTime(time); setStep(4); };
-
-            // --- ★ 確認預約並寫入資料庫 ---
-            const handleConfirm = async () => {
-                // 驗證：確保輸入的是 8 位數字 (09 已經固定了)
-                const phoneSuffixRegex = /^\d{8}$/;
-                if (!phoneSuffixRegex.test(customerInfo.phone)) {
-                    setError('請輸入完整的手機號碼 (後 8 碼)');
-                    return;
-                }
-
-                // 組合完整號碼：09 + 用戶輸入的 8 碼
-                const fullPhoneNumber = '09' + customerInfo.phone;
-
-                setIsSubmitting(true);
-                try {
-                    // 寫入 Supabase 'bookings' 表
-                    const { error: insertError } = await supabaseClient.from('bookings').insert([
-                        {
-                            store_id: storeInfo.id,
-                            service_name: selectedService.name,
-                            staff_name: selectedStaff.name,
-                            booking_date: selectedDate, // 使用選擇的日期
-                            booking_time: selectedTime,
-                            customer_name: customerInfo.name,
-                            customer_phone: fullPhoneNumber,
-                            status: 'confirmed' // 預設狀態
-                        }
-                    ]);
-
-                    if (insertError) throw insertError;
-
-                    // 成功！
-                    setStep(5);
-                } catch (err) {
-                    console.error("預約寫入失敗:", err);
-                    alert("預約失敗，該時段可能剛剛被搶走了，請重試！");
-                } finally {
-                    setIsSubmitting(false);
-                }
-            };
-
-            // --- 圖標組件 ---
-            const Icon = ({ name, size = 20, className = "" }) => {
-                const ref = useRef(null);
-                useEffect(() => {
-                    if (!ref.current || !window.lucide) return;
-                    const i = document.createElement('i');
-                    i.setAttribute('data-lucide', name);
-                    i.setAttribute('width', size);
-                    i.setAttribute('height', size);
-                    if (className) i.setAttribute('class', className);
-                    ref.current.innerHTML = '';
-                    ref.current.appendChild(i);
-                    window.lucide.createIcons({ root: ref.current });
-                }, [name, size, className]);
-                return <span ref={ref} className="inline-flex items-center justify-center"></span>;
-            };
-
-            // --- 載入中畫面 ---
-            if (loading) {
-                return (
-                    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-                        <div className="loader mb-4"></div>
-                        <p className="text-slate-500">正在喚醒 Amber 的資料庫...</p>
-                    </div>
-                );
-            }
-
-            if (!storeInfo) return <div className="text-center p-10">找不到店家資料，請確認資料庫已建立。</div>;
-
-            return (
-                <div className="min-h-screen bg-gradient-to-br from-stone-50 to-emerald-50 flex justify-center p-4 relative">
-                    <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl flex flex-col overflow-hidden relative border border-white/50 h-[85vh]">
-                        
-                        {/* 頂部導覽 */}
-                        <header className="bg-white/80 backdrop-blur-md p-4 border-b border-stone-100 flex items-center sticky top-0 z-20">
-                            {step > 1 && step < 5 && (
-                                <button onClick={() => setStep(step - 1)} className="mr-2 p-2 rounded-full hover:bg-stone-100 transition-colors">
-                                    <Icon name="chevron-left" />
-                                </button>
-                            )}
-                            <div className="flex-1 text-center font-bold text-stone-700">
-                                {step === 1 ? "預約課程" : step === 2 ? "選擇指導老師" : step === 3 ? "選擇時段" : step === 4 ? "確認資料" : "預約完成"}
-                            </div>
-                            {step > 1 && step < 5 && <div className="w-10"></div>}
-                        </header>
-
-                        {/* 進度條 */}
-                        {step < 5 && (
-                            <div className="w-full bg-stone-100 h-1">
-                                <div className="bg-emerald-500 h-1 transition-all duration-500" style={{ width: `${(step / 4) * 100}%` }}></div>
-                            </div>
-                        )}
-
-                        <main className="flex-1 p-5 overflow-y-auto custom-scrollbar">
-                            
-                            {/* STEP 1: 服務 (從 services 狀態讀取) */}
-                            {step === 1 && (
-                                <div className="space-y-6 animate-fade-in-up">
-                                    {/* ★ 店家 Header (標題 + 描述 + 地點 + Info) */}
-                                    <div className="text-center py-4 relative">
-                                        <div className="flex items-center justify-center mb-2">
-                                            <h1 className="text-2xl font-bold text-stone-800">{storeInfo.name}</h1>
-                                            {/* 注意事項按鈕 */}
-                                            <button 
-                                                onClick={() => setShowInfoModal(true)}
-                                                className="ml-2 text-stone-400 hover:text-emerald-600 transition-colors"
-                                            >
-                                                <Icon name="info" size={20} />
-                                            </button>
-                                        </div>
-                                        <p className="text-sm text-stone-500 mt-1 tracking-wide px-4 whitespace-pre-wrap">{storeInfo.description}</p>
-                                        {/* 地點顯示 */}
-                                        <div className="flex items-center justify-center mt-3 text-xs text-stone-400">
-                                            <Icon name="map-pin" size={14} className="mr-1 text-emerald-500" />
-                                            {storeInfo.address}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        {services.map(service => (
-                                            <div key={service.id} onClick={() => handleServiceSelect(service)} 
-                                                className="bg-white border border-stone-100 rounded-2xl p-5 hover:border-emerald-400 hover:shadow-lg cursor-pointer transition-all active:scale-95 group">
-                                                <div className="flex justify-between">
-                                                    <div>
-                                                        <h3 className="font-bold text-lg text-stone-800 group-hover:text-emerald-700">{service.name}</h3>
-                                                        <p className="text-xs text-stone-400 mt-1">{service.description}</p>
-                                                        <div className="flex items-center text-xs text-stone-400 mt-2 font-medium">
-                                                            <span className="mr-1">🕒</span> {service.duration} 分鐘
-                                                        </div>
-                                                    </div>
-                                                    <span className="text-lg font-bold text-emerald-600 font-mono">${service.price}</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* STEP 2: 人員 (從 staffList 狀態讀取) */}
-                            {step === 2 && (
-                                <div className="space-y-4 animate-fade-in-up">
-                                    <div className="bg-emerald-50 p-3 rounded-xl text-sm text-emerald-800 border border-emerald-100 flex justify-between">
-                                        <span>課程：{selectedService.name}</span>
-                                        <span className="font-bold">${selectedService.price}</span>
-                                    </div>
-                                    <div onClick={() => handleStaffSelect({ id: 'any', name: '不指定老師', avatar: '', isAny: true })}
-                                        className="border border-dashed border-stone-300 rounded-2xl p-4 flex items-center hover:bg-emerald-50 cursor-pointer">
-                                        <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mr-4 text-xl">🧘</div>
-                                        <div>
-                                            <h3 className="font-bold text-stone-700">不指定 (最快可約)</h3>
-                                            <p className="text-xs text-stone-400">由系統安排合適教練</p>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {staffList.map(staff => (
-                                            <div key={staff.id} onClick={() => handleStaffSelect(staff)}
-                                                className="border border-stone-100 rounded-2xl p-4 flex flex-col items-center hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white group">
-                                                <img src={staff.avatar} className="w-16 h-16 rounded-full mb-2 bg-stone-50 group-hover:scale-105 transition-transform object-cover" />
-                                                <h3 className="font-bold text-stone-700">{staff.name}</h3>
-                                                <span className="text-[10px] bg-stone-100 text-stone-500 px-2 py-1 rounded mt-1">{staff.title}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* STEP 3: 時間 (動態時段) */}
-                            {step === 3 && (
-                                <div className="animate-fade-in-up">
-                                    <div className="flex space-x-2 mb-6 text-xs">
-                                        <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">{selectedService.name}</span>
-                                        <span className="bg-stone-100 text-stone-600 px-3 py-1 rounded-full">{selectedStaff.name}</span>
-                                    </div>
-                                    
-                                    {/* 日期選擇器 */}
-                                    <div className="mb-6">
-                                        <label className="block text-xs font-bold text-stone-400 mb-2 uppercase">預約日期</label>
-                                        <input 
-                                            type="date" 
-                                            value={selectedDate} 
-                                            onChange={e => setSelectedDate(e.target.value)}
-                                            className="w-full p-3 bg-white border border-stone-200 rounded-xl font-bold text-stone-700"
-                                        />
-                                    </div>
-
-                                    <h3 className="font-bold mb-4 flex items-center text-stone-700">
-                                        <Icon name="calendar" size={16} className="mr-2"/> 
-                                        選擇時段
-                                        {isCheckingSlots && <span className="ml-2 text-xs font-normal text-slate-400">查詢中...</span>}
-                                    </h3>
-                                    
-                                    {/* 4 欄排版 */}
-                                    <div className="grid grid-cols-4 gap-2">
-                                        {TIME_SLOTS.map(time => {
-                                            // 檢查是否被佔用
-                                            const isTaken = bookedSlots.includes(time);
-                                            
-                                            return (
-                                                <button 
-                                                    key={time} 
-                                                    onClick={() => !isTaken && handleTimeSelect(time)}
-                                                    disabled={isTaken}
-                                                    className={`py-2 px-1 border rounded-lg text-sm font-medium transition active:scale-95 flex flex-col items-center justify-center
-                                                        ${isTaken 
-                                                            ? 'bg-stone-100 text-stone-300 border-stone-100 cursor-not-allowed' 
-                                                            : 'bg-white hover:bg-emerald-600 hover:text-white hover:border-emerald-600 text-stone-600 border-stone-200'}`}
-                                                >
-                                                    {time}
-                                                    {/* 如果額滿，顯示小字 */}
-                                                    {isTaken && <span className="text-[9px] font-normal">已額滿</span>}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* STEP 4: 資料 */}
-                            {step === 4 && (
-                                <div className="space-y-6 animate-fade-in-up">
-                                    <div className="bg-white border border-stone-100 shadow-lg rounded-2xl overflow-hidden">
-                                        <div className="bg-emerald-600 p-3 text-white font-bold text-center">預約確認</div>
-                                        <div className="p-5 space-y-3 text-sm">
-                                            <div className="flex justify-between"><span className="text-stone-400">課程</span><span className="font-medium text-stone-700">{selectedService.name}</span></div>
-                                            <div className="flex justify-between"><span className="text-stone-400">老師</span><span className="font-medium text-stone-700">{selectedStaff.name}</span></div>
-                                            <div className="flex justify-between"><span className="text-stone-400">時間</span><span className="font-bold text-emerald-600">{selectedDate} {selectedTime}</span></div>
-                                            <div className="pt-3 border-t border-stone-100 flex justify-between items-center">
-                                                <span className="text-stone-400">費用</span>
-                                                <span className="text-xl font-bold text-stone-800">${selectedService.price}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">姓名</label>
-                                            <input type="text" placeholder="您的稱呼" value={customerInfo.name} onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})}
-                                                className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"/>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">手機</label>
-                                            <div className="relative">
-                                                {/* UI 修改：左側固定顯示 09 */}
-                                                <div className="absolute left-0 top-0 bottom-0 flex items-center pl-4 pointer-events-none">
-                                                    <span className="text-stone-500 font-bold border-r border-stone-300 pr-2 mr-2">09</span>
-                                                </div>
-                                                <input 
-                                                    type="tel" 
-                                                    maxLength="8"
-                                                    value={customerInfo.phone} 
-                                                    onChange={(e) => { 
-                                                        // 邏輯修改：只能輸入數字
-                                                        const val = e.target.value.replace(/\D/g, '');
-                                                        setCustomerInfo({...customerInfo, phone: val}); 
-                                                        setError(''); 
-                                                    }}
-                                                    className={`w-full pl-16 pr-4 py-3 bg-stone-50 border rounded-xl focus:ring-2 outline-none ${error ? 'border-red-500 bg-red-50' : 'border-stone-200 focus:ring-emerald-500'}`}
-                                                />
-                                            </div>
-                                            {error && <p className="text-red-500 text-xs mt-1 ml-1">{error}</p>}
-                                        </div>
-                                    </div>
-                                    <button 
-                                        onClick={handleConfirm} 
-                                        disabled={isSubmitting}
-                                        className={`w-full text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-95 transition-all ${isSubmitting ? 'bg-stone-400 cursor-not-allowed' : 'bg-stone-800 hover:bg-stone-900'}`}
-                                    >
-                                        {isSubmitting ? '處理中...' : '確認預約'}
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* STEP 5: 完成 */}
-                            {step === 5 && (
-                                <div className="text-center pt-8 animate-fade-in-up">
-                                    <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <Icon name="check" size={40} className="text-emerald-600" />
-                                    </div>
-                                    <h2 className="text-2xl font-bold text-stone-800 mb-2">預約成功！</h2>
-                                    <p className="text-stone-500 text-sm mb-8">感謝您的預約，期待與您在墊上相見。</p>
-
-                                    <div className="bg-stone-50 p-6 rounded-2xl text-left mb-6 border border-stone-200">
-                                        <div className="flex items-center mb-4">
-                                            <Icon name="calendar" className="mr-3 text-emerald-500"/>
-                                            <div>
-                                                <h3 className="font-bold text-stone-800">{selectedDate}</h3>
-                                                <p className="text-emerald-600 font-bold">{selectedTime}</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-sm text-stone-500 space-y-1 pl-9 border-l-2 border-stone-200 ml-2">
-                                            <p>課程：{selectedService.name}</p>
-                                            <p>老師：{selectedStaff.name}</p>
-                                            {/* UI 修改：顯示完整號碼 */}
-                                            <p>電話：09{customerInfo.phone}</p>
-                                        </div>
-                                    </div>
-
-                                    <a href={storeInfo.lineUrl} target="_blank" className="block w-full bg-[#06c755] text-white py-3 rounded-xl font-bold hover:bg-[#05b34c] transition flex items-center justify-center shadow-lg shadow-green-500/20">
-                                        <span className="mr-2 text-xl">💬</span> 加入 LINE 接收提醒
-                                    </a>
-                                    <button onClick={() => window.location.reload()} className="block w-full text-stone-400 py-3 text-sm mt-2 hover:text-stone-600">返回首頁</button>
-                                </div>
-                            )}
-                        </main>
-                        
-                        {/* ★ 開發者模式：商家後台入口按鈕 (放在 UI 內部的右下角) */}
-                        <a href="admin.html" className="absolute bottom-4 right-4 bg-slate-800/90 text-white px-3 py-2 rounded-lg shadow-lg hover:bg-emerald-600 transition-all z-50 backdrop-blur-sm flex items-center text-xs font-bold" title="前往商家後台">
-                            <Icon name="settings" size={14} className="mr-1" />
-                            開發模式
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- C端 -->
+                <div class="bg-slate-800 rounded-3xl p-1 border border-slate-700">
+                    <div class="bg-slate-800 p-8 rounded-[20px] h-full flex flex-col">
+                        <div class="mb-6">
+                            <span class="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Customer</span>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-2">我是客人</h3>
+                        <p class="text-slate-400 text-sm mb-8 flex-1">
+                            模擬一般客戶進行課程預約。體驗流暢的選課、選人、選時段流程。
+                        </p>
+                        <a href="index.html" target="_blank" class="block w-full bg-blue-600 hover:bg-blue-500 text-white text-center py-3 rounded-xl font-bold transition">
+                            進入預約頁面 <i class="fas fa-arrow-right ml-2"></i>
                         </a>
-
-                        {/* ★ 注意事項 Modal (彈跳視窗) */}
-                        {showInfoModal && (
-                            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6 backdrop-blur-sm animate-fade-in-up">
-                                <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm relative">
-                                    <button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
-                                        <Icon name="x" size={24} />
-                                    </button>
-                                    <h3 className="text-xl font-bold text-stone-800 mb-4 flex items-center">
-                                        <Icon name="info" className="mr-2 text-emerald-500" />
-                                        課程預約須知
-                                    </h3>
-                                    <div className="text-sm text-stone-600 space-y-3 leading-relaxed whitespace-pre-wrap">
-                                        {storeInfo.terms || `歡迎來到 Amber Flow！為了維護課程品質，請您留意以下事項：
-                                        
-1. 請著輕便運動服裝，並自備毛巾與水壺。
-2. 請提前 5-10 分鐘 抵達教室，進行更衣與暖身準備。
-3. 上課期間請將手機調整為靜音，專注於當下。
-4. 若有心血管疾病、懷孕或舊傷，請務必於課前告知老師。
-
-取消政策：
-如需取消或更改預約，請於課程開始前 24 小時 透過 LINE 或系統告知，以免影響您未來的預約權益。`}
-                                    </div>
-                                    <button onClick={() => setShowInfoModal(false)} className="w-full mt-6 bg-stone-800 text-white py-3 rounded-xl font-bold hover:bg-stone-900 transition">
-                                        我了解了
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
                     </div>
                 </div>
-            );
-        }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<BookingApp />);
-    </script>
+                <!-- B端 Admin -->
+                <div class="bg-gradient-to-b from-emerald-500 to-emerald-700 rounded-3xl p-1 shadow-2xl shadow-emerald-900/50 transform md:-translate-y-4">
+                    <div class="bg-slate-900 p-8 rounded-[20px] h-full flex flex-col relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-4 opacity-10">
+                            <i class="fas fa-crown text-9xl text-white"></i>
+                        </div>
+                        <div class="mb-6 relative z-10">
+                            <span class="bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Business Owner</span>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-2 relative z-10">我是老闆</h3>
+                        <p class="text-slate-400 text-sm mb-6 flex-1 relative z-10">
+                            進入總控後台，管理所有設定。<br>
+                            <span class="text-emerald-400 mt-2 block">
+                                <i class="fas fa-key mr-1"></i> 測試帳號: admin<br>
+                                <i class="fas fa-lock mr-1"></i> 測試密碼: 1234
+                            </span>
+                        </p>
+                        <a href="admin.html" target="_blank" class="block w-full bg-emerald-600 hover:bg-emerald-500 text-white text-center py-3 rounded-xl font-bold transition relative z-10">
+                            登入管理後台 <i class="fas fa-arrow-right ml-2"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- B端 Staff -->
+                <div class="bg-slate-800 rounded-3xl p-1 border border-slate-700">
+                    <div class="bg-slate-800 p-8 rounded-[20px] h-full flex flex-col">
+                        <div class="mb-6">
+                            <span class="bg-purple-500/20 text-purple-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Staff</span>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-2">我是老師</h3>
+                        <p class="text-slate-400 text-sm mb-6 flex-1">
+                            模擬員工登入，查看個人課表與業績。<br>
+                            <span class="text-purple-400 mt-2 block">
+                                <i class="fas fa-user-tag mr-1"></i> 請先至總後台<br>
+                                查看老師的登入碼
+                            </span>
+                        </p>
+                        <a href="staff.html?id=YOUR_TEST_STAFF_ID" onclick="alert('請先在總後台複製老師的專屬連結，因為每位老師的 ID 都不同！'); return false;" class="block w-full bg-purple-600 hover:bg-purple-500 text-white text-center py-3 rounded-xl font-bold transition">
+                            體驗員工後台 <i class="fas fa-arrow-right ml-2"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-slate-50 py-10 text-center text-slate-400 text-sm">
+        <p>&copy; 2025 Amber Flow. All rights reserved.</p>
+        <p class="mt-2">Built with <i class="fas fa-heart text-red-400 mx-1"></i> & Supabase</p>
+    </footer>
+
 </body>
 </html>
