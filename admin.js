@@ -33,7 +33,7 @@ const Icon = ({ name, size = 20, className = "" }) => {
     return <span ref={ref} className="inline-flex items-center justify-center"></span>;
 };
 
-// --- 1. 儀表板 (升級版：支援排休合併顯示) ---
+// --- 1. 儀表板 (升級版：支援排休合併 & 失約狀態) ---
 function DashboardView({ supabase }) {
     const [bookings, setBookings] = useState([]);
     const [services, setServices] = useState([]);
@@ -80,7 +80,6 @@ function DashboardView({ supabase }) {
     const mergeLeaveSlots = (leaves) => {
         if (leaves.length === 0) return [];
         
-        // 先依照老師與日期排序
         const sorted = [...leaves].sort((a, b) => {
             if (a.staff_name !== b.staff_name) return a.staff_name.localeCompare(b.staff_name);
             if (a.booking_date !== b.booking_date) return a.booking_date.localeCompare(b.booking_date);
@@ -91,23 +90,17 @@ function DashboardView({ supabase }) {
         let currentGroup = null;
 
         sorted.forEach((leave) => {
-            // 判斷是否為連續時段 (假設間隔是 30 分鐘)
-            // 簡化邏輯：如果是同一人、同一天、同一原因，且時間是列表中下一個，則合併
-            // 這裡採用更寬鬆的「同一天同一人同一事由」即視為一組，顯示範圍從最早到最晚
-            
             if (currentGroup && 
                 currentGroup.staff_name === leave.staff_name && 
                 currentGroup.booking_date === leave.booking_date && 
                 currentGroup.reason === leave.customer_name) {
                 
-                // 更新結束時間
                 currentGroup.endTime = leave.booking_time;
-                currentGroup.ids.push(leave.id); // 收集所有 ID 以便批次刪除
+                currentGroup.ids.push(leave.id);
             } else {
-                // 開新群組
                 if (currentGroup) merged.push(currentGroup);
                 currentGroup = {
-                    id: leave.id, // 用第一個 ID 當代表
+                    id: leave.id,
                     ids: [leave.id],
                     staff_name: leave.staff_name,
                     booking_date: leave.booking_date,
@@ -125,7 +118,7 @@ function DashboardView({ supabase }) {
     async function batchCancelLeave(ids) {
         if(!confirm(`確定要取消這 ${ids.length} 個排休時段嗎？`)) return;
         try {
-            const { error } = await supabase.from('bookings').delete().in('id', ids); // 直接刪除 blocked 紀錄
+            const { error } = await supabase.from('bookings').delete().in('id', ids);
             if (error) throw error;
             fetchData();
         } catch (err) {
@@ -150,13 +143,11 @@ function DashboardView({ supabase }) {
         });
 
         const bookingList = displayList.filter(b => b.status !== 'blocked');
-        
-        // 原始排休列表
         const rawLeaves = displayList.filter(b => b.status === 'blocked');
-        // ★ 執行合併
         const leaveList = mergeLeaveSlots(rawLeaves);
 
         bookings.forEach(b => {
+            // ★ 關鍵：只有 confirmed 或 completed 才算有效訂單與營收 (排除 no_show)
             const isValid = b.status === 'confirmed' || b.status === 'completed';
             const price = services.find(s => s.name === b.service_name)?.price || 0;
 
@@ -241,7 +232,7 @@ function DashboardView({ supabase }) {
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                     {stats.bookingList.map(b => (
-                                        <tr key={b.id} className="hover:bg-slate-50 transition">
+                                        <tr key={b.id} className={`hover:bg-slate-50 transition ${b.status === 'no_show' ? 'opacity-50 grayscale' : ''}`}>
                                             <td className="p-3 pl-4">
                                                 <div className="font-bold text-slate-800">{b.booking_time}</div>
                                                 <div className="text-xs text-slate-400">{b.booking_date}</div>
@@ -255,8 +246,10 @@ function DashboardView({ supabase }) {
                                                 <div className="text-xs text-slate-500 flex items-center"><Icon name="user" size={10} className="mr-1"/>{b.staff_name}</div>
                                             </td>
                                             <td className="p-3 text-center">
+                                                {/* ★ 狀態顯示邏輯更新：包含 no_show */}
                                                 {b.status === 'completed' ? <span className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-xs font-bold">已完成</span> : 
                                                  b.status === 'cancelled' ? <span className="text-red-400 bg-red-50 px-2 py-1 rounded text-xs font-bold">已取消</span> :
+                                                 b.status === 'no_show' ? <span className="text-gray-500 bg-gray-200 px-2 py-1 rounded text-xs font-bold">未出席</span> :
                                                  <span className="text-emerald-600 bg-emerald-50 px-2 py-1 rounded text-xs font-bold animate-pulse">進行中</span>}
                                             </td>
                                             <td className="p-3 text-right pr-4">
@@ -264,6 +257,8 @@ function DashboardView({ supabase }) {
                                                     <div className="flex justify-end gap-1">
                                                         <button onClick={() => updateStatus(b.id, 'completed')} className="p-2 text-emerald-600 hover:bg-emerald-100 rounded" title="完成"><Icon name="check" size={16}/></button>
                                                         <button onClick={() => updateStatus(b.id, 'cancelled')} className="p-2 text-red-400 hover:bg-red-100 rounded" title="取消"><Icon name="x" size={16}/></button>
+                                                        {/* 老闆也可以手動標記 no_show，但通常由老師操作 */}
+                                                        <button onClick={() => updateStatus(b.id, 'no_show')} className="p-2 text-gray-400 hover:bg-gray-100 rounded" title="標記失約"><Icon name="user-x" size={16}/></button>
                                                     </div>
                                                 )}
                                             </td>
@@ -384,7 +379,6 @@ function MonthlyOverview({ supabase, selectedDate, staffList }) {
 
 function ScheduleManager({ supabase }) {
     const [staffList, setStaffList] = useState([]);
-    const [services, setServices] = useState([]); // ★ 新增：儲存服務列表以查詢時長
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedStaff, setSelectedStaff] = useState(null);
     const [blockedSlots, setBlockedSlots] = useState([]);
@@ -393,12 +387,7 @@ function ScheduleManager({ supabase }) {
     const [leaveData, setLeaveData] = useState({ start: '08:00', end: '12:00', reason: '事假' });
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', details: [], onConfirm: null, isDelete: false });
 
-    // ★ 修改：同時抓取人員與服務
-    useEffect(() => { 
-        fetchStaff(); 
-        fetchServices(); 
-    }, []);
-    
+    useEffect(() => { fetchStaff(); }, []);
     useEffect(() => { if (selectedStaff) fetchSchedule(); }, [selectedStaff, selectedDate]);
 
     async function fetchStaff() {
@@ -409,58 +398,12 @@ function ScheduleManager({ supabase }) {
         }
     }
 
-    // ★ 新增：抓取服務時長
-    async function fetchServices() {
-        const { data } = await supabase.from('services').select('name, duration');
-        if (data) setServices(data);
-    }
-
     async function fetchSchedule() {
         setLoading(true);
-        // ★ 修改：多抓取 service_name 以便對應時長
-        const { data } = await supabase.from('bookings')
-            .select('booking_time, status, id, customer_name, service_name')
-            .eq('staff_name', selectedStaff.name)
-            .eq('booking_date', selectedDate)
-            .neq('status', 'cancelled');
+        const { data } = await supabase.from('bookings').select('booking_time, status, id, customer_name').eq('staff_name', selectedStaff.name).eq('booking_date', selectedDate).neq('status', 'cancelled');
         if (data) setBlockedSlots(data);
         setLoading(false);
     }
-
-    // ★ 新增：計算每個時段的佔用狀態 (含時長推算)
-    const slotStatusMap = useMemo(() => {
-        const map = {};
-        blockedSlots.forEach(booking => {
-            if (booking.status === 'blocked') {
-                // 排休 (Leave) 是一格一格存的，直接標記
-                map[booking.booking_time] = booking;
-            } else {
-                // 客人預約 (Customer) 需要計算時長
-                const service = services.find(s => s.name === booking.service_name);
-                const duration = service ? service.duration : 60; // 若找不到，預設 60 分鐘
-                const slotsNeeded = Math.ceil(duration / 30); // 需要佔用幾格 (30分鐘一格)
-                const startIndex = ALL_TIME_SLOTS.indexOf(booking.booking_time);
-                
-                if (startIndex >= 0) {
-                    for (let i = 0; i < slotsNeeded; i++) {
-                        const timeSlot = ALL_TIME_SLOTS[startIndex + i];
-                        if (timeSlot) {
-                            // 標記該時段被此訂單佔用
-                            // 如果是第一格 (i===0)，保留原始資訊；如果是後續格子，也指向同一筆訂單
-                            if (!map[timeSlot]) {
-                                map[timeSlot] = { 
-                                    ...booking, 
-                                    isMain: i === 0, // 標記是否為課程開始時間
-                                    displayLabel: i === 0 ? '🟢 預約' : '🔒 佔用' 
-                                };
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        return map;
-    }, [blockedSlots, services]);
 
     const changeDate = (offset) => {
         const date = new Date(selectedDate);
@@ -476,10 +419,7 @@ function ScheduleManager({ supabase }) {
                     details: [{ label: '人員', value: selectedStaff.name }, { label: '日期', value: selectedDate }, { label: '時間', value: time }, { label: '事由', value: existingBooking.customer_name || '無' }],
                     onConfirm: async () => { await supabase.from('bookings').delete().eq('id', existingBooking.id); setConfirmModal({ ...confirmModal, isOpen: false }); fetchSchedule(); }
                 });
-            } else { 
-                // 即使點擊的是「佔用」時段，也能正確辨識為客人預約
-                alert(`這是客人的預約 (${existingBooking.booking_time} 開始)，請至儀表板取消訂單。`); 
-            }
+            } else { alert("這是客人的預約，請至儀表板取消訂單。"); }
         } else {
             setLeaveData({ start: time, end: time, reason: '臨時排休' });
             setShowFormModal(true);
@@ -538,28 +478,10 @@ function ScheduleManager({ supabase }) {
                 <h4 className="font-bold text-slate-700 mb-4 flex items-center">{selectedDate} 的時段狀態 {loading && <span className="ml-2 text-xs text-slate-400 font-normal">讀取中...</span>}</h4>
                 <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-3">
                     {ALL_TIME_SLOTS.map(time => {
-                        // ★ 修改：改為從計算過的 slotStatusMap 讀取狀態
-                        const booking = slotStatusMap[time];
+                        const booking = blockedSlots.find(b => b.booking_time === time);
                         const isCustomer = booking && booking.status !== 'blocked';
                         const isLeave = booking && booking.status === 'blocked';
-                        
-                        return (
-                            <button 
-                                key={time} 
-                                onClick={() => toggleSlot(time, booking)} 
-                                className={`p-2 rounded-lg border text-center transition relative overflow-hidden group min-h-[70px] flex flex-col items-center justify-center 
-                                    ${isCustomer ? 'bg-emerald-100 border-emerald-200 cursor-not-allowed' : 
-                                      isLeave ? 'bg-red-50 border-red-200' : 
-                                      'bg-white hover:border-slate-400'}`}
-                            >
-                                <div className="font-bold text-sm mb-1">{time}</div>
-                                <div className={`text-[10px] font-bold ${isCustomer ? 'text-emerald-700' : isLeave ? 'text-red-500' : 'text-slate-300'}`}>
-                                    {isCustomer ? (booking.displayLabel || '🟢 預約') : 
-                                     isLeave ? `⛔ ${booking.customer_name || '休假'}` : 
-                                     '⚪️ 空'}
-                                </div>
-                            </button>
-                        );
+                        return (<button key={time} onClick={() => toggleSlot(time, booking)} className={`p-2 rounded-lg border text-center transition relative overflow-hidden group min-h-[70px] flex flex-col items-center justify-center ${isCustomer ? 'bg-emerald-100 border-emerald-200 cursor-not-allowed' : isLeave ? 'bg-red-50 border-red-200' : 'bg-white hover:border-slate-400'}`}><div className="font-bold text-sm mb-1">{time}</div><div className={`text-[10px] font-bold ${isCustomer ? 'text-emerald-700' : isLeave ? 'text-red-500' : 'text-slate-300'}`}>{isCustomer ? '🟢 預約' : isLeave ? `⛔ ${isLeave ? (booking.customer_name || '休假') : ''}` : '⚪️ 空'}</div></button>);
                     })}
                 </div>
             </div>
