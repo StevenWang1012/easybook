@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amber Flow 預約系統 (Demo)</title>
+    <title>Amber Flow 預約系統</title>
     
     <!-- 引入 Tailwind CSS (美化樣式) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -155,26 +155,96 @@
                 }
             }, [step, selectedDate, selectedStaff]);
 
+            // ★★★ 關鍵修改：動態計算佔用時段 (包含時長) ★★★
             async function fetchAvailability() {
                 setIsCheckingSlots(true);
-                // 抓取該教練、該日期的所有訂單 (包含 confirmed 和 blocked)
-                const query = supabaseClient
-                    .from('bookings')
-                    .select('booking_time')
-                    .eq('booking_date', selectedDate)
-                    .neq('status', 'cancelled'); 
+                try {
+                    // 1. 抓取該教練、該日期的所有訂單
+                    let query = supabaseClient
+                        .from('bookings')
+                        .select('booking_time, service_name, status') // 多抓 service_name 以便查詢時長
+                        .eq('booking_date', selectedDate)
+                        .neq('status', 'cancelled'); 
 
-                // 如果有指定教練才查該教練，若不指定則視為全店 (MVP 先簡化邏輯)
-                if (!selectedStaff.isAny) {
-                    query.eq('staff_name', selectedStaff.name);
-                }
+                    if (!selectedStaff.isAny) {
+                        query = query.eq('staff_name', selectedStaff.name);
+                    }
 
-                const { data, error } = await query;
-                if (data) {
-                    const times = data.map(b => b.booking_time);
-                    setBookedSlots(times);
+                    const { data: bookingsData, error } = await query;
+                    if (error) throw error;
+
+                    // 2. 建立佔用時段 Set
+                    const takenSlots = new Set();
+
+                    if (bookingsData) {
+                        bookingsData.forEach(booking => {
+                            const time = booking.booking_time;
+                            let duration = 30; // 預設時長 (如果是排休blocked)
+                            
+                            // 找出該訂單的時長
+                            if (booking.status !== 'blocked') {
+                                const service = services.find(s => s.name === booking.service_name);
+                                if (service) duration = service.duration;
+                            }
+
+                            // 將持續時間內的每個 30 分鐘都標記為佔用
+                            const slotsCount = Math.ceil(duration / 30);
+                            const [hour, minute] = time.split(':').map(Number);
+                            
+                            for (let i = 0; i < slotsCount; i++) {
+                                let currentTotalMinutes = hour * 60 + minute + (i * 30);
+                                let h = Math.floor(currentTotalMinutes / 60);
+                                let m = currentTotalMinutes % 60;
+                                // 格式化回 HH:mm
+                                const slotTime = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                                takenSlots.add(slotTime);
+                            }
+                        });
+                    }
+                    
+                    // 3. 額外檢查：當前選擇的服務時長是否會撞到後面的預約
+                    // 例如：我想約 12:30 (60min)，雖然 12:30 空著，但 13:00 有人，所以 12:30 也不能約
+                    const finalBookedSlots = [];
+                    const currentServiceDuration = selectedService ? selectedService.duration : 30;
+                    const slotsNeeded = Math.ceil(currentServiceDuration / 30);
+
+                    TIME_SLOTS.forEach(slot => {
+                        // 檢查 1: 本身是否被佔用
+                        if (takenSlots.has(slot)) {
+                            finalBookedSlots.push(slot);
+                            return;
+                        }
+
+                        // 檢查 2: 是否有足夠的連續空檔 (若是長課程)
+                        if (slotsNeeded > 1) {
+                            const [h, m] = slot.split(':').map(Number);
+                            let isConflict = false;
+                            
+                            for (let i = 1; i < slotsNeeded; i++) {
+                                let nextTotal = h * 60 + m + (i * 30);
+                                let nh = Math.floor(nextTotal / 60);
+                                let nm = nextTotal % 60;
+                                const nextTime = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}`;
+                                
+                                if (takenSlots.has(nextTime)) {
+                                    isConflict = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (isConflict) {
+                                finalBookedSlots.push(slot); // 標記為不可選
+                            }
+                        }
+                    });
+
+                    setBookedSlots(finalBookedSlots);
+
+                } catch (err) {
+                    console.error("查詢時段失敗:", err);
+                } finally {
+                    setIsCheckingSlots(false);
                 }
-                setIsCheckingSlots(false);
             }
 
             // --- 處理函式 ---
@@ -220,12 +290,9 @@
                     // ★ 針對「重複預約」的錯誤碼 23505 (Unique Violation) 做特別處理
                     if (err.code === '23505') {
                         alert("哎呀！慢了一步，這個時段剛剛被其他人訂走了 😢\n\n系統將自動重新整理，請您選擇其他時段。");
-                        // 重新抓取最新時段狀態，讓被搶走的時段變灰色
                         fetchAvailability();
-                        // 回到「選擇時段」的步驟 (Step 3)
                         setStep(3);
                     } else {
-                        // 其他錯誤
                         alert("預約發生錯誤，請稍後再試：" + (err.message || "未知錯誤"));
                     }
                 } finally {
@@ -263,8 +330,8 @@
             if (!storeInfo) return <div className="text-center p-10">找不到店家資料，請確認資料庫已建立。</div>;
 
             return (
-                <div className="min-h-screen bg-gradient-to-br from-stone-50 to-emerald-50 flex justify-center p-4 relative">
-                    <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl flex flex-col overflow-hidden relative border border-white/50 h-[85vh]">
+                <div className="min-h-screen bg-gradient-to-br from-stone-50 to-emerald-50 flex justify-center md:p-4 relative">
+                    <div className="w-full h-screen rounded-none md:max-w-md md:h-[85vh] md:rounded-[32px] bg-white shadow-2xl flex flex-col overflow-hidden relative border-0 md:border border-white/50">
                         
                         {/* 頂部導覽 */}
                         <header className="bg-white/80 backdrop-blur-md p-4 border-b border-stone-100 flex items-center sticky top-0 z-20">
@@ -520,7 +587,9 @@
 1. 請著輕便運動服裝，並自備毛巾與水壺。
 2. 請提前 5-10 分鐘 抵達教室，進行更衣與暖身準備。
 3. 上課期間請將手機調整為靜音，專注於當下。
-4. 若有心血管疾病、懷孕或舊傷，請務必於課前告知老師。\r\n\r\n取消政策：
+4. 若有心血管疾病、懷孕或舊傷，請務必於課前告知老師。
+
+取消政策：
 如需取消或更改預約，請於課程開始前 24 小時 透過 LINE 或系統告知，以免影響您未來的預約權益。`}
                                     </div>
                                     <button onClick={() => setShowInfoModal(false)} className="w-full mt-6 bg-stone-800 text-white py-3 rounded-xl font-bold hover:bg-stone-900 transition">

@@ -1,4 +1,4 @@
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useMemo } = React;
 
 // ★ 設定 Supabase 連線
 const supabaseUrl = 'https://kwvbhzjzysmivafsvwng.supabase.co';
@@ -33,31 +33,33 @@ const Icon = ({ name, size = 20, className = "" }) => {
     return <span ref={ref} className="inline-flex items-center justify-center"></span>;
 };
 
-// --- 1. 儀表板 (已新增錯誤處理) ---
+// --- 1. 儀表板 (升級版：支援排休合併顯示) ---
 function DashboardView({ supabase }) {
     const [bookings, setBookings] = useState([]);
-    const [stats, setStats] = useState({ count: 0, revenue: 0 });
+    const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
+    const [tab, setTab] = useState('bookings'); // bookings | leaves
+    const [timeFilter, setTimeFilter] = useState('today'); // today | tomorrow | all
 
-    useEffect(() => { fetchBookings(); }, []);
+    useEffect(() => { fetchData(); }, []);
 
-    async function fetchBookings() {
+    async function fetchData() {
         setLoading(true);
         setErrorMsg('');
-        
         try {
-            const { data, error } = await supabase.from('bookings').select('*').order('created_at', { ascending: false });
-            if (error) throw error;
+            const [bookingRes, serviceRes] = await Promise.all([
+                supabase.from('bookings').select('*').order('booking_date', { ascending: true }).order('booking_time', { ascending: true }),
+                supabase.from('services').select('name, price')
+            ]);
 
-            if (data) {
-                setBookings(data);
-                const validBookings = data.filter(b => b.status !== 'cancelled' && b.status !== 'blocked');
-                setStats({ count: validBookings.length, revenue: validBookings.length * 1200 });
-            }
+            if (bookingRes.error) throw bookingRes.error;
+            setBookings(bookingRes.data || []);
+            setServices(serviceRes.data || []);
+
         } catch (err) {
             console.error("讀取失敗:", err);
-            setErrorMsg(err.message || "無法讀取預約資料，請檢查網路連線或稍後再試。");
+            setErrorMsg(err.message || "無法讀取資料");
         } finally {
             setLoading(false);
         }
@@ -68,59 +70,268 @@ function DashboardView({ supabase }) {
         try {
             const { error } = await supabase.from('bookings').update({ status: newStatus }).eq('id', id);
             if (error) throw error;
-            fetchBookings();
+            fetchData();
         } catch (err) {
-            console.error("更新失敗:", err);
-            alert("更新狀態失敗: " + err.message);
+            alert("操作失敗: " + err.message);
         }
     }
 
+    // ★ 新增：合併排休時段邏輯
+    const mergeLeaveSlots = (leaves) => {
+        if (leaves.length === 0) return [];
+        
+        // 先依照老師與日期排序
+        const sorted = [...leaves].sort((a, b) => {
+            if (a.staff_name !== b.staff_name) return a.staff_name.localeCompare(b.staff_name);
+            if (a.booking_date !== b.booking_date) return a.booking_date.localeCompare(b.booking_date);
+            return a.booking_time.localeCompare(b.booking_time);
+        });
+
+        const merged = [];
+        let currentGroup = null;
+
+        sorted.forEach((leave) => {
+            // 判斷是否為連續時段 (假設間隔是 30 分鐘)
+            // 簡化邏輯：如果是同一人、同一天、同一原因，且時間是列表中下一個，則合併
+            // 這裡採用更寬鬆的「同一天同一人同一事由」即視為一組，顯示範圍從最早到最晚
+            
+            if (currentGroup && 
+                currentGroup.staff_name === leave.staff_name && 
+                currentGroup.booking_date === leave.booking_date && 
+                currentGroup.reason === leave.customer_name) {
+                
+                // 更新結束時間
+                currentGroup.endTime = leave.booking_time;
+                currentGroup.ids.push(leave.id); // 收集所有 ID 以便批次刪除
+            } else {
+                // 開新群組
+                if (currentGroup) merged.push(currentGroup);
+                currentGroup = {
+                    id: leave.id, // 用第一個 ID 當代表
+                    ids: [leave.id],
+                    staff_name: leave.staff_name,
+                    booking_date: leave.booking_date,
+                    startTime: leave.booking_time,
+                    endTime: leave.booking_time,
+                    reason: leave.customer_name
+                };
+            }
+        });
+        if (currentGroup) merged.push(currentGroup);
+        return merged;
+    };
+
+    // --- 批次取消休假 ---
+    async function batchCancelLeave(ids) {
+        if(!confirm(`確定要取消這 ${ids.length} 個排休時段嗎？`)) return;
+        try {
+            const { error } = await supabase.from('bookings').delete().in('id', ids); // 直接刪除 blocked 紀錄
+            if (error) throw error;
+            fetchData();
+        } catch (err) {
+            alert("取消失敗: " + err.message);
+        }
+    }
+
+    const stats = useMemo(() => {
+        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+        const tmrStr = tomorrow.toISOString().split('T')[0];
+
+        let todayRev = 0, todayCount = 0, monthRev = 0, monthCount = 0;
+        const serviceStats = {};
+        const timeStats = {};
+
+        let displayList = bookings.filter(b => {
+            if (timeFilter === 'today') return b.booking_date === today;
+            if (timeFilter === 'tomorrow') return b.booking_date === tmrStr;
+            return true; 
+        });
+
+        const bookingList = displayList.filter(b => b.status !== 'blocked');
+        
+        // 原始排休列表
+        const rawLeaves = displayList.filter(b => b.status === 'blocked');
+        // ★ 執行合併
+        const leaveList = mergeLeaveSlots(rawLeaves);
+
+        bookings.forEach(b => {
+            const isValid = b.status === 'confirmed' || b.status === 'completed';
+            const price = services.find(s => s.name === b.service_name)?.price || 0;
+
+            if (isValid) {
+                if (b.booking_date.startsWith(today.slice(0, 7))) {
+                    monthRev += price;
+                    monthCount++;
+                }
+                if (b.booking_date === today) {
+                    todayRev += price;
+                    todayCount++;
+                }
+                serviceStats[b.service_name] = (serviceStats[b.service_name] || 0) + 1;
+                const hour = b.booking_time.split(':')[0];
+                timeStats[hour] = (timeStats[hour] || 0) + 1;
+            }
+        });
+
+        const topServices = Object.entries(serviceStats)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 3);
+
+        return { 
+            todayRev, todayCount, monthRev, monthCount, 
+            bookingList, leaveList, topServices, timeStats
+        };
+    }, [bookings, services, timeFilter]);
+
     return (
-        <div className="space-y-8">
-            {errorMsg && (
-                <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-sm flex justify-between items-center mb-4">
-                    <div className="flex items-center"><Icon name="alert-circle" className="mr-2" /><div><p className="font-bold">系統發生錯誤</p><p className="text-sm">{errorMsg}</p></div></div>
-                    <button onClick={fetchBookings} className="bg-red-100 hover:bg-red-200 text-red-800 text-sm font-bold py-2 px-4 rounded transition">重試</button>
+        <div className="space-y-6 animate-fade-in-up">
+            {errorMsg && <div className="bg-red-50 text-red-700 p-4 rounded-xl flex justify-between items-center"><span className="flex items-center"><Icon name="alert-triangle" className="mr-2"/>{errorMsg}</span><button onClick={fetchData} className="font-bold underline">重試</button></div>}
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div><p className="text-xs text-slate-400 font-bold mb-1">今日預約</p><h3 className="text-2xl font-black text-slate-800">{stats.todayCount} <span className="text-sm font-normal text-slate-400">單</span></h3></div>
+                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Icon name="calendar-check" /></div>
                 </div>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <div className="flex justify-between items-start mb-4">
-                        <div><p className="text-sm text-slate-400 mb-1">有效訂單</p><h3 className="text-3xl font-bold text-slate-800">{stats.count}</h3></div>
-                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Icon name="ticket" /></div>
-                    </div>
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div><p className="text-xs text-slate-400 font-bold mb-1">今日營收</p><h3 className="text-2xl font-black text-emerald-600">${stats.todayRev.toLocaleString()}</h3></div>
+                    <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><Icon name="dollar-sign" /></div>
                 </div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <div className="flex justify-between items-start mb-4">
-                        <div><p className="text-sm text-slate-400 mb-1">預估營收</p><h3 className="text-3xl font-bold text-slate-800">${stats.revenue.toLocaleString()}</h3></div>
-                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><Icon name="dollar-sign" /></div>
-                    </div>
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div><p className="text-xs text-slate-400 font-bold mb-1">本月累積營收</p><h3 className="text-2xl font-black text-slate-800">${stats.monthRev.toLocaleString()}</h3></div>
+                    <div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><Icon name="trending-up" /></div>
+                </div>
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-5 rounded-2xl shadow-lg flex flex-col justify-center items-center text-center">
+                    <p className="text-xs opacity-60 mb-1">本月訂單總數</p>
+                    <h3 className="text-3xl font-black text-emerald-400">{stats.monthCount}</h3>
                 </div>
             </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                    <h3 className="font-bold text-lg text-slate-800">最新預約</h3>
-                    <button onClick={fetchBookings} className="text-sm text-emerald-600 flex items-center font-bold hover:bg-emerald-50 px-3 py-1 rounded transition"><Icon name="refresh-ccw" size={14} className="mr-1" /> 重新整理</button>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[500px]">
+                    <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div className="flex bg-slate-100 p-1 rounded-xl">
+                            <button onClick={() => setTab('bookings')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition ${tab === 'bookings' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                                <Icon name="users" size={16} className="mr-2" /> 客戶預約
+                                <span className="ml-2 bg-slate-100 px-2 rounded-full text-xs text-slate-500">{stats.bookingList.length}</span>
+                            </button>
+                            <button onClick={() => setTab('leaves')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition ${tab === 'leaves' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                                <Icon name="coffee" size={16} className="mr-2" /> 人員排休
+                                <span className="ml-2 bg-slate-100 px-2 rounded-full text-xs text-slate-500">{stats.leaveList.length}</span>
+                            </button>
+                        </div>
+                        <div className="flex gap-2">
+                            <select value={timeFilter} onChange={e => setTimeFilter(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg p-2 font-bold outline-none focus:ring-2 focus:ring-emerald-500">
+                                <option value="today">📅 今日行程</option>
+                                <option value="tomorrow">🌤 明日預告</option>
+                                <option value="all">📚 全部列表</option>
+                            </select>
+                            <button onClick={fetchData} className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg"><Icon name="refresh-cw" size={18}/></button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-2">
+                        {loading ? <div className="text-center p-10 text-slate-400">載入中...</div> : 
+                         tab === 'bookings' ? (
+                            stats.bookingList.length === 0 ? <div className="text-center p-10 text-slate-400">目前沒有預約資料 🍃</div> :
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
+                                    <tr><th className="p-3 pl-4">時間</th><th className="p-3">客戶</th><th className="p-3">項目/老師</th><th className="p-3 text-center">狀態</th><th className="p-3 text-right pr-4">操作</th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {stats.bookingList.map(b => (
+                                        <tr key={b.id} className="hover:bg-slate-50 transition">
+                                            <td className="p-3 pl-4">
+                                                <div className="font-bold text-slate-800">{b.booking_time}</div>
+                                                <div className="text-xs text-slate-400">{b.booking_date}</div>
+                                            </td>
+                                            <td className="p-3">
+                                                <div className="font-bold text-slate-700">{b.customer_name}</div>
+                                                <div className="text-xs text-slate-400 font-mono">{b.customer_phone}</div>
+                                            </td>
+                                            <td className="p-3">
+                                                <div className="text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded w-fit text-xs mb-1">{b.service_name}</div>
+                                                <div className="text-xs text-slate-500 flex items-center"><Icon name="user" size={10} className="mr-1"/>{b.staff_name}</div>
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                {b.status === 'completed' ? <span className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-xs font-bold">已完成</span> : 
+                                                 b.status === 'cancelled' ? <span className="text-red-400 bg-red-50 px-2 py-1 rounded text-xs font-bold">已取消</span> :
+                                                 <span className="text-emerald-600 bg-emerald-50 px-2 py-1 rounded text-xs font-bold animate-pulse">進行中</span>}
+                                            </td>
+                                            <td className="p-3 text-right pr-4">
+                                                {b.status === 'confirmed' && (
+                                                    <div className="flex justify-end gap-1">
+                                                        <button onClick={() => updateStatus(b.id, 'completed')} className="p-2 text-emerald-600 hover:bg-emerald-100 rounded" title="完成"><Icon name="check" size={16}/></button>
+                                                        <button onClick={() => updateStatus(b.id, 'cancelled')} className="p-2 text-red-400 hover:bg-red-100 rounded" title="取消"><Icon name="x" size={16}/></button>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        ) : (
+                            stats.leaveList.length === 0 ? <div className="text-center p-10 text-slate-400">全員到齊，無人排休 💪</div> :
+                            <div className="space-y-2 p-2">
+                                {stats.leaveList.map(group => (
+                                    <div key={group.id} className="flex items-center justify-between p-4 bg-red-50 border border-red-100 rounded-xl">
+                                        <div className="flex items-center gap-4">
+                                            <div className="text-center min-w-[100px]">
+                                                <div className="font-bold text-red-800 text-lg">
+                                                    {group.startTime} {group.startTime !== group.endTime && `- ${group.endTime}`}
+                                                </div>
+                                                <div className="text-xs text-red-400 font-bold">{group.booking_date}</div>
+                                                <div className="text-[10px] bg-red-100 text-red-600 px-1 rounded mt-1 inline-block">共 {group.ids.length} 時段</div>
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-slate-800 flex items-center"><Icon name="user-x" size={16} className="mr-2 text-red-500"/> {group.staff_name}</div>
+                                                <div className="text-sm text-slate-500 mt-1">事由：{group.reason}</div>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => batchCancelLeave(group.ids)} className="px-3 py-1 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100">取消休假</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="bg-gray-50 text-slate-500 text-xs uppercase">
-                            <tr><th className="p-4 font-bold border-b">顧客資料</th><th className="p-4 font-bold border-b">項目與時間</th><th className="p-4 font-bold border-b">狀態</th><th className="p-4 font-bold border-b text-right">操作</th></tr>
-                        </thead>
-                        <tbody className="text-sm">
-                            {loading ? <tr><td colSpan="4" className="p-8 text-center text-slate-400">載入中...</td></tr> : bookings.length === 0 ? <tr><td colSpan="4" className="p-8 text-center text-slate-400">尚無資料</td></tr> : bookings.map(b => (
-                                <tr key={b.id} className={`border-b border-gray-100 transition ${b.status === 'cancelled' ? 'bg-gray-50 opacity-60' : 'hover:bg-gray-50'}`}>
-                                    <td className="p-4">{b.status === 'blocked' ? <div><span className="text-slate-500 font-bold block mb-1">⛔ {b.customer_name || '教練排休'}</span></div> : <div><div className="font-bold text-slate-700">{b.customer_name}</div><div className="text-xs text-slate-400 font-mono">{b.customer_phone}</div></div>}</td>
-                                    <td className="p-4"><div className="text-emerald-700 font-medium">{b.service_name || '時段鎖定'}</div><div className="text-xs text-slate-500 mt-1 flex items-center"><span className="bg-slate-100 px-2 py-0.5 rounded mr-2">{b.staff_name}</span><span>{b.booking_date} {b.booking_time}</span></div></td>
-                                    <td className="p-4">{b.status === 'cancelled' ? <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs font-bold">已取消</span> : b.status === 'blocked' ? <span className="bg-gray-200 text-gray-600 px-2 py-1 rounded-full text-xs font-bold">休假/鎖定</span> : b.status === 'completed' ? <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-bold">已完成</span> : <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">已預約</span>}</td>
-                                    <td className="p-4 text-right space-x-2">
-                                        {b.status !== 'cancelled' && b.status !== 'blocked' && <><button onClick={() => updateStatus(b.id, 'completed')} className="text-blue-600 hover:bg-blue-50 p-2 rounded" title="完成"><Icon name="check-square" size={18}/></button><button onClick={() => updateStatus(b.id, 'cancelled')} className="text-red-400 hover:bg-red-50 p-2 rounded" title="取消"><Icon name="x-circle" size={18}/></button></>}
-                                        {b.status === 'blocked' && <button onClick={() => updateStatus(b.id, 'cancelled')} className="text-slate-500 hover:bg-slate-200 p-2 rounded" title="刪除休假"><Icon name="trash-2" size={18}/></button>}
-                                    </td>
-                                </tr>
+
+                <div className="space-y-6">
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                        <h4 className="font-bold text-slate-800 mb-4 flex items-center"><Icon name="trophy" className="mr-2 text-yellow-500"/> 熱門課程 Top 3</h4>
+                        <div className="space-y-4">
+                            {stats.topServices.length === 0 ? <p className="text-sm text-slate-400">尚無數據</p> : stats.topServices.map(([name, count], idx) => (
+                                <div key={name} className="flex items-center justify-between">
+                                    <div className="flex items-center">
+                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${idx===0 ? 'bg-yellow-100 text-yellow-700' : idx===1 ? 'bg-slate-100 text-slate-600' : 'bg-orange-50 text-orange-600'}`}>{idx+1}</div>
+                                        <span className="text-sm font-bold text-slate-700">{name}</span>
+                                    </div>
+                                    <span className="text-xs font-bold bg-slate-100 px-2 py-1 rounded text-slate-500">{count} 次</span>
+                                </div>
                             ))}
-                        </tbody>
-                    </table>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                        <h4 className="font-bold text-slate-800 mb-4 flex items-center"><Icon name="clock" className="mr-2 text-blue-500"/> 熱門時段分布</h4>
+                        <div className="flex items-end gap-1 h-32 pt-4 border-b border-slate-100">
+                            {['09', '10', '14', '15', '19', '20'].map(hour => {
+                                const val = stats.timeStats[hour] || 0;
+                                const max = Math.max(...Object.values(stats.timeStats), 1);
+                                const h = (val / max) * 100;
+                                return (
+                                    <div key={hour} className="flex-1 flex flex-col items-center justify-end h-full group">
+                                        <div className="w-full bg-blue-100 rounded-t-sm transition-all duration-500 group-hover:bg-blue-400 relative" style={{height: `${h}%`}}>
+                                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold text-blue-600 opacity-0 group-hover:opacity-100 transition">{val}</div>
+                                        </div>
+                                        <span className="text-[10px] text-slate-400 mt-1">{hour}點</span>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-2 text-center">僅顯示重點時段趨勢</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -173,6 +384,7 @@ function MonthlyOverview({ supabase, selectedDate, staffList }) {
 
 function ScheduleManager({ supabase }) {
     const [staffList, setStaffList] = useState([]);
+    const [services, setServices] = useState([]); // ★ 新增：儲存服務列表以查詢時長
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedStaff, setSelectedStaff] = useState(null);
     const [blockedSlots, setBlockedSlots] = useState([]);
@@ -181,7 +393,12 @@ function ScheduleManager({ supabase }) {
     const [leaveData, setLeaveData] = useState({ start: '08:00', end: '12:00', reason: '事假' });
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', details: [], onConfirm: null, isDelete: false });
 
-    useEffect(() => { fetchStaff(); }, []);
+    // ★ 修改：同時抓取人員與服務
+    useEffect(() => { 
+        fetchStaff(); 
+        fetchServices(); 
+    }, []);
+    
     useEffect(() => { if (selectedStaff) fetchSchedule(); }, [selectedStaff, selectedDate]);
 
     async function fetchStaff() {
@@ -192,12 +409,58 @@ function ScheduleManager({ supabase }) {
         }
     }
 
+    // ★ 新增：抓取服務時長
+    async function fetchServices() {
+        const { data } = await supabase.from('services').select('name, duration');
+        if (data) setServices(data);
+    }
+
     async function fetchSchedule() {
         setLoading(true);
-        const { data } = await supabase.from('bookings').select('booking_time, status, id, customer_name').eq('staff_name', selectedStaff.name).eq('booking_date', selectedDate).neq('status', 'cancelled');
+        // ★ 修改：多抓取 service_name 以便對應時長
+        const { data } = await supabase.from('bookings')
+            .select('booking_time, status, id, customer_name, service_name')
+            .eq('staff_name', selectedStaff.name)
+            .eq('booking_date', selectedDate)
+            .neq('status', 'cancelled');
         if (data) setBlockedSlots(data);
         setLoading(false);
     }
+
+    // ★ 新增：計算每個時段的佔用狀態 (含時長推算)
+    const slotStatusMap = useMemo(() => {
+        const map = {};
+        blockedSlots.forEach(booking => {
+            if (booking.status === 'blocked') {
+                // 排休 (Leave) 是一格一格存的，直接標記
+                map[booking.booking_time] = booking;
+            } else {
+                // 客人預約 (Customer) 需要計算時長
+                const service = services.find(s => s.name === booking.service_name);
+                const duration = service ? service.duration : 60; // 若找不到，預設 60 分鐘
+                const slotsNeeded = Math.ceil(duration / 30); // 需要佔用幾格 (30分鐘一格)
+                const startIndex = ALL_TIME_SLOTS.indexOf(booking.booking_time);
+                
+                if (startIndex >= 0) {
+                    for (let i = 0; i < slotsNeeded; i++) {
+                        const timeSlot = ALL_TIME_SLOTS[startIndex + i];
+                        if (timeSlot) {
+                            // 標記該時段被此訂單佔用
+                            // 如果是第一格 (i===0)，保留原始資訊；如果是後續格子，也指向同一筆訂單
+                            if (!map[timeSlot]) {
+                                map[timeSlot] = { 
+                                    ...booking, 
+                                    isMain: i === 0, // 標記是否為課程開始時間
+                                    displayLabel: i === 0 ? '🟢 預約' : '🔒 佔用' 
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        return map;
+    }, [blockedSlots, services]);
 
     const changeDate = (offset) => {
         const date = new Date(selectedDate);
@@ -213,7 +476,10 @@ function ScheduleManager({ supabase }) {
                     details: [{ label: '人員', value: selectedStaff.name }, { label: '日期', value: selectedDate }, { label: '時間', value: time }, { label: '事由', value: existingBooking.customer_name || '無' }],
                     onConfirm: async () => { await supabase.from('bookings').delete().eq('id', existingBooking.id); setConfirmModal({ ...confirmModal, isOpen: false }); fetchSchedule(); }
                 });
-            } else { alert("這是客人的預約，請至儀表板取消訂單。"); }
+            } else { 
+                // 即使點擊的是「佔用」時段，也能正確辨識為客人預約
+                alert(`這是客人的預約 (${existingBooking.booking_time} 開始)，請至儀表板取消訂單。`); 
+            }
         } else {
             setLeaveData({ start: time, end: time, reason: '臨時排休' });
             setShowFormModal(true);
@@ -272,10 +538,28 @@ function ScheduleManager({ supabase }) {
                 <h4 className="font-bold text-slate-700 mb-4 flex items-center">{selectedDate} 的時段狀態 {loading && <span className="ml-2 text-xs text-slate-400 font-normal">讀取中...</span>}</h4>
                 <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-3">
                     {ALL_TIME_SLOTS.map(time => {
-                        const booking = blockedSlots.find(b => b.booking_time === time);
+                        // ★ 修改：改為從計算過的 slotStatusMap 讀取狀態
+                        const booking = slotStatusMap[time];
                         const isCustomer = booking && booking.status !== 'blocked';
                         const isLeave = booking && booking.status === 'blocked';
-                        return (<button key={time} onClick={() => toggleSlot(time, booking)} className={`p-2 rounded-lg border text-center transition relative overflow-hidden group min-h-[70px] flex flex-col items-center justify-center ${isCustomer ? 'bg-emerald-100 border-emerald-200 cursor-not-allowed' : isLeave ? 'bg-red-50 border-red-200' : 'bg-white hover:border-slate-400'}`}><div className="font-bold text-sm mb-1">{time}</div><div className={`text-[10px] font-bold ${isCustomer ? 'text-emerald-700' : isLeave ? 'text-red-500' : 'text-slate-300'}`}>{isCustomer ? '🟢 預約' : isLeave ? `⛔ ${isLeave ? (booking.customer_name || '休假') : ''}` : '⚪️ 空'}</div></button>);
+                        
+                        return (
+                            <button 
+                                key={time} 
+                                onClick={() => toggleSlot(time, booking)} 
+                                className={`p-2 rounded-lg border text-center transition relative overflow-hidden group min-h-[70px] flex flex-col items-center justify-center 
+                                    ${isCustomer ? 'bg-emerald-100 border-emerald-200 cursor-not-allowed' : 
+                                      isLeave ? 'bg-red-50 border-red-200' : 
+                                      'bg-white hover:border-slate-400'}`}
+                            >
+                                <div className="font-bold text-sm mb-1">{time}</div>
+                                <div className={`text-[10px] font-bold ${isCustomer ? 'text-emerald-700' : isLeave ? 'text-red-500' : 'text-slate-300'}`}>
+                                    {isCustomer ? (booking.displayLabel || '🟢 預約') : 
+                                     isLeave ? `⛔ ${booking.customer_name || '休假'}` : 
+                                     '⚪️ 空'}
+                                </div>
+                            </button>
+                        );
                     })}
                 </div>
             </div>
