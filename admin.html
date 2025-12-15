@@ -30,7 +30,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
-        // ★ 設定 Supabase 連線
+        // ★ Supabase 設定
         const supabaseUrl = 'https://kwvbhzjzysmivafsvwng.supabase.co';
         const supabaseKey = 'sb_publishable_7RUbenk2kXNDmvuo1XtHbQ_m0RjXuZr'; 
         const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
@@ -73,7 +73,6 @@
                 setLoading(true);
                 setErrorMsg('');
                 try {
-                    // ★ 關鍵修正：加上 .eq('store_id', storeId)
                     const [bookingRes, serviceRes] = await Promise.all([
                         supabase.from('bookings').select('*').eq('store_id', storeId).order('booking_date', { ascending: true }).order('booking_time', { ascending: true }),
                         supabase.from('services').select('name, price').eq('store_id', storeId)
@@ -102,7 +101,6 @@
                 if(!error) fetchData();
             }
 
-            // 合併排休邏輯
             const mergeLeaveSlots = (leaves) => {
                 if (leaves.length === 0) return [];
                 const sorted = [...leaves].sort((a, b) => a.booking_time.localeCompare(b.booking_time));
@@ -492,7 +490,8 @@
             };
 
             const copyLink = (id) => {
-                const url = `${window.location.origin}/staff.html?id=${id}`;
+                // 使用 URL 建構子，自動處理子目錄路徑 (GitHub Pages 必備)
+                const url = new URL(`staff.html?id=${id}`, window.location.href).href;
                 navigator.clipboard.writeText(url);
                 alert("已複製老師專屬連結！\n請貼到 LINE 給老師：" + url);
             };
