@@ -40,22 +40,48 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
         // ★ Supabase 設定
         const supabaseUrl = 'https://kwvbhzjzysmivafsvwng.supabase.co';
         const supabaseKey = 'sb_publishable_7RUbenk2kXNDmvuo1XtHbQ_m0RjXuZr'; 
         const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-        const generateTimeSlots = () => {
+        // ★ 核心工具：生成時段 (支援跨日)
+        const generateTimeSlots = (openTime = "09:00", closeTime = "21:00") => {
             const slots = [];
-            for (let h = 8; h <= 21; h++) {
-                slots.push(`${h.toString().padStart(2, '0')}:00`);
-                if (h < 21) slots.push(`${h.toString().padStart(2, '0')}:30`);
+            const [openH, openM] = openTime.split(':').map(Number);
+            const [closeH, closeM] = closeTime.split(':').map(Number);
+
+            let startMinutes = openH * 60 + openM;
+            let endMinutes = closeH * 60 + closeM;
+
+            // 處理跨日：如果結束時間小於開始時間，加 24小時
+            if (endMinutes < startMinutes) {
+                endMinutes += 24 * 60;
+            }
+
+            for (let m = startMinutes; m < endMinutes; m += 30) { // 注意這裡用 < endMinutes，通常不包含打烊那一刻
+                let h = Math.floor(m / 60);
+                let min = m % 60;
+                let isNextDay = false;
+                
+                if (h >= 24) {
+                    h -= 24;
+                    isNextDay = true;
+                }
+
+                const timeStr = `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+                
+                slots.push({
+                    time: timeStr,
+                    isNextDay: isNextDay,
+                    label: isNextDay ? `${timeStr} (隔日)` : timeStr,
+                    sortValue: m 
+                });
             }
             return slots;
         };
-        const TIME_SLOTS = generateTimeSlots();
 
         const Icon = ({ name, size = 20, className = "" }) => {
             const ref = useRef(null);
@@ -215,7 +241,7 @@
             
             const [selectedService, setSelectedService] = useState(null);
             const [selectedStaff, setSelectedStaff] = useState(null);
-            const [selectedTime, setSelectedTime] = useState(null);
+            const [selectedTimeObj, setSelectedTimeObj] = useState(null); // 改存物件，包含 isNextDay
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
             
             const [bookedSlots, setBookedSlots] = useState([]);
@@ -225,7 +251,13 @@
             const [isSubmitting, setIsSubmitting] = useState(false);
             const [error, setError] = useState('');
 
-            // 初始化與檢查 LocalStorage 訂單數
+            // ★ 動態計算時段 (根據 storeInfo)
+            const dynamicSlots = useMemo(() => {
+                if(!storeInfo) return [];
+                // 如果資料庫沒設定，預設 09:00 - 21:00
+                return generateTimeSlots(storeInfo.open_time || "09:00", storeInfo.close_time || "21:00");
+            }, [storeInfo]);
+
             useEffect(() => {
                 async function init() {
                     try {
@@ -233,14 +265,18 @@
                         // 1. 抓取店鋪資料
                         const { data: stores } = await supabaseClient.from('stores').select('*').limit(1);
                         if (stores && stores.length > 0) {
-                            setStoreInfo({ ...stores[0], description: stores[0].description || "找回身體的流動與平衡。", address: stores[0].address || "台北市", lineUrl: stores[0].line_url });
+                            setStoreInfo({ 
+                                ...stores[0], 
+                                description: stores[0].description || "找回身體的流動與平衡。", 
+                                address: stores[0].address || "台北市", 
+                                lineUrl: stores[0].line_url 
+                            });
                         }
                         const { data: svc } = await supabaseClient.from('services').select('*');
                         if (svc) setServices(svc.filter(i => !i.deleted_at));
                         const { data: stf } = await supabaseClient.from('staff').select('*').order('rating', { ascending: false });
                         if (stf) setStaffList(stf.filter(i => !i.deleted_at));
 
-                        // 2. 檢查紅點
                         const savedUser = localStorage.getItem('amber_user');
                         if (savedUser) {
                             const { name, phone } = JSON.parse(savedUser);
@@ -254,55 +290,77 @@
                 init();
             }, []);
 
-            // 預約流程相關 effect
+            // 檢查時段佔用 (包含跨日邏輯)
             useEffect(() => { if (step === 3 && selectedStaff) fetchAvailability(); }, [step, selectedDate, selectedStaff]);
 
             async function fetchAvailability() {
                 setIsCheckingSlots(true);
                 try {
-                    let query = supabaseClient.from('bookings').select('booking_time, service_name, status').eq('booking_date', selectedDate).neq('status', 'cancelled'); 
+                    // ★ 查詢範圍擴大：查「選取日期」以及「選取日期 + 1天」(為了處理跨日重疊)
+                    const nextDate = new Date(selectedDate);
+                    nextDate.setDate(nextDate.getDate() + 1);
+                    const nextDateStr = nextDate.toISOString().split('T')[0];
+
+                    let query = supabaseClient.from('bookings').select('booking_date, booking_time, service_name, status')
+                        .in('booking_date', [selectedDate, nextDateStr])
+                        .neq('status', 'cancelled'); 
+                    
                     if (!selectedStaff.isAny) query = query.eq('staff_name', selectedStaff.name);
                     const { data: bookingsData } = await query;
 
                     const takenSlots = new Set();
                     if (bookingsData) {
                         bookingsData.forEach(booking => {
-                            const time = booking.booking_time;
+                            // 計算該預約的「絕對開始分鐘數」(相對於 selectedDate 00:00)
+                            const [bH, bM] = booking.booking_time.split(':').map(Number);
+                            let bookingStartMins = bH * 60 + bM;
+                            
+                            // 如果這筆訂單是「隔天」的，分鐘數要加 24*60
+                            if (booking.booking_date === nextDateStr) {
+                                bookingStartMins += 24 * 60;
+                            }
+
                             let duration = 30;
                             if (booking.status !== 'blocked') {
                                 const service = services.find(s => s.name === booking.service_name);
                                 if (service) duration = service.duration;
                             }
+                            
+                            // 標記佔用時段
                             const slotsCount = Math.ceil(duration / 30);
-                            const [hour, minute] = time.split(':').map(Number);
                             for (let i = 0; i < slotsCount; i++) {
-                                let currentTotalMinutes = hour * 60 + minute + (i * 30);
-                                let h = Math.floor(currentTotalMinutes / 60);
-                                let m = currentTotalMinutes % 60;
-                                takenSlots.add(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+                                let currentTotalMinutes = bookingStartMins + (i * 30);
+                                takenSlots.add(currentTotalMinutes);
                             }
                         });
                     }
                     
+                    // 比對 dynamicSlots
                     const finalBookedSlots = [];
                     const currentServiceDuration = selectedService ? selectedService.duration : 30;
                     const slotsNeeded = Math.ceil(currentServiceDuration / 30);
 
-                    TIME_SLOTS.forEach(slot => {
-                        if (takenSlots.has(slot)) { finalBookedSlots.push(slot); return; }
+                    dynamicSlots.forEach(slot => {
+                        // slot.sortValue 是該時段的絕對分鐘數 (跨日已加 1440)
+                        const startMins = slot.sortValue;
+                        
+                        // 檢查起始點是否被佔用
+                        if (takenSlots.has(startMins)) { 
+                            finalBookedSlots.push(slot.time); // 這裡存 time string 方便比對 UI
+                            return; 
+                        }
+
+                        // 檢查連續時段
                         if (slotsNeeded > 1) {
-                            const [h, m] = slot.split(':').map(Number);
                             let isConflict = false;
                             for (let i = 1; i < slotsNeeded; i++) {
-                                let nextTotal = h * 60 + m + (i * 30);
-                                let nh = Math.floor(nextTotal / 60);
-                                let nm = nextTotal % 60;
-                                const nextTime = `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}`;
-                                if (takenSlots.has(nextTime)) { isConflict = true; break; }
+                                const checkMins = startMins + (i * 30);
+                                if (takenSlots.has(checkMins)) { isConflict = true; break; }
                             }
-                            if (isConflict) finalBookedSlots.push(slot);
+                            if (isConflict) finalBookedSlots.push(slot.time);
                         }
                     });
+                    
                     setBookedSlots(finalBookedSlots);
                 } catch (err) { console.error(err); } finally { setIsCheckingSlots(false); }
             }
@@ -312,14 +370,22 @@
                 if (!phoneSuffixRegex.test(customerInfo.phone)) { setError('請輸入完整的手機號碼 (後 8 碼)'); return; }
                 const fullPhoneNumber = '09' + customerInfo.phone;
                 
+                // ★ 處理跨日存檔日期
+                let finalDate = selectedDate;
+                if (selectedTimeObj.isNextDay) {
+                    const d = new Date(selectedDate);
+                    d.setDate(d.getDate() + 1);
+                    finalDate = d.toISOString().split('T')[0];
+                }
+
                 setIsSubmitting(true);
                 try {
                     const { error: insertError } = await supabaseClient.from('bookings').insert([{
                         store_id: storeInfo.id,
                         service_name: selectedService.name,
                         staff_name: selectedStaff.name,
-                        booking_date: selectedDate,
-                        booking_time: selectedTime,
+                        booking_date: finalDate, // 使用計算後的日期
+                        booking_time: selectedTimeObj.time, // 存入原始 HH:MM
                         customer_name: customerInfo.name,
                         customer_phone: fullPhoneNumber,
                         status: 'confirmed',
@@ -332,46 +398,38 @@
                     setStep(5);
 
                 } catch (err) {
-                    if (err.code === '23505') {
-                        alert("哎呀！慢了一步，該時段已被搶走 😢");
-                        fetchAvailability();
-                        setStep(3);
-                    } else {
-                        alert("預約錯誤: " + err.message);
-                    }
+                    alert("預約錯誤: " + err.message);
                 } finally { setIsSubmitting(false); }
             };
 
-            // ★ Google Calendar URL 生成器
             const generateGoogleCalendarUrl = () => {
-                if (!selectedService || !selectedDate || !selectedTime) return '#';
+                if (!selectedService || !selectedDate || !selectedTimeObj) return '#';
                 
-                // 1. 計算開始時間 (YYYYMMDDThhmmss)
-                const startStr = selectedDate.replace(/-/g, '') + 'T' + selectedTime.replace(':', '') + '00';
+                // 計算正確的開始與結束時間 (含跨日)
+                let startD = new Date(selectedDate);
+                if (selectedTimeObj.isNextDay) startD.setDate(startD.getDate() + 1);
                 
-                // 2. 計算結束時間
-                const [h, m] = selectedTime.split(':').map(Number);
-                const startDateObj = new Date(selectedDate);
-                startDateObj.setHours(h, m + selectedService.duration);
-                // 格式化結束時間
-                const endY = startDateObj.getFullYear();
-                const endM = (startDateObj.getMonth() + 1).toString().padStart(2, '0');
-                const endD = startDateObj.getDate().toString().padStart(2, '0');
-                const endH = startDateObj.getHours().toString().padStart(2, '0');
-                const endMin = startDateObj.getMinutes().toString().padStart(2, '0');
-                const endStr = `${endY}${endM}${endD}T${endH}${endMin}00`;
+                const [h, m] = selectedTimeObj.time.split(':').map(Number);
+                startD.setHours(h, m);
+                
+                const endD = new Date(startD);
+                endD.setMinutes(endD.getMinutes() + selectedService.duration);
 
-                // 3. 建立 URL 參數
+                const formatGCalTime = (date) => {
+                    return date.toISOString().replace(/-|:|\.\d\d\d/g, ""); // ISO 轉 Google 格式
+                };
+
                 const title = encodeURIComponent(`${storeInfo.name} - ${selectedService.name}`);
-                const details = encodeURIComponent(`指導老師：${selectedStaff.name}\n預約編號：${customerInfo.phone}\n請提早 10 分鐘報到。`);
+                const details = encodeURIComponent(`指導老師：${selectedStaff.name}\n預約編號：${customerInfo.phone}`);
                 const location = encodeURIComponent(storeInfo.address);
 
-                return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}&location=${location}`;
+                return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${formatGCalTime(startD)}/${formatGCalTime(endD)}&details=${details}&location=${location}`;
             };
 
             const handleServiceSelect = (service) => { setSelectedService(service); setStep(2); };
             const handleStaffSelect = (staff) => { setSelectedStaff(staff); setStep(3); };
-            const handleTimeSelect = (time) => { setSelectedTime(time); setStep(4); };
+            // 改為接收整個 slot 物件
+            const handleTimeSelect = (slotObj) => { setSelectedTimeObj(slotObj); setStep(4); };
 
             if (loading) return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50"><div className="loader mb-4"></div><p className="text-slate-500">載入中...</p></div>;
             if (!storeInfo) return <div className="text-center p-10">資料庫未連接</div>;
@@ -386,7 +444,6 @@
                             {/* 分頁：預約首頁 */}
                             {activeTab === 'booking' && (
                                 <>
-                                    {/* Header (只在預約流程中顯示) */}
                                     <header className="bg-white/80 backdrop-blur-md p-4 border-b border-stone-100 flex items-center sticky top-0 z-20">
                                         {step > 1 && step < 5 && <button onClick={() => setStep(step - 1)} className="mr-2 p-2 rounded-full hover:bg-stone-100"><Icon name="chevron-left" /></button>}
                                         <div className="flex-1 text-center font-bold text-stone-700">
@@ -395,7 +452,6 @@
                                         {step > 1 && step < 5 && <div className="w-10"></div>}
                                     </header>
 
-                                    {/* Progress */}
                                     {step < 5 && <div className="w-full bg-stone-100 h-1"><div className="bg-emerald-500 h-1 transition-all duration-500" style={{ width: `${(step / 4) * 100}%` }}></div></div>}
 
                                     <div className="p-5 pb-24">
@@ -421,12 +477,22 @@
                                                 <div className="flex space-x-2 mb-6 text-xs"><span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">{selectedService.name}</span><span className="bg-stone-100 text-stone-600 px-3 py-1 rounded-full">{selectedStaff.name}</span></div>
                                                 <div className="mb-6"><label className="block text-xs font-bold text-stone-400 mb-2 uppercase">預約日期</label><input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl font-bold text-stone-700"/></div>
                                                 <h3 className="font-bold mb-4 flex items-center text-stone-700"><Icon name="calendar" size={16} className="mr-2"/> 選擇時段 {isCheckingSlots && <span className="ml-2 text-xs font-normal text-slate-400">查詢中...</span>}</h3>
-                                                <div className="grid grid-cols-4 gap-2">{TIME_SLOTS.map(time => { const isTaken = bookedSlots.includes(time); return (<button key={time} onClick={() => !isTaken && handleTimeSelect(time)} disabled={isTaken} className={`py-2 px-1 border rounded-lg text-sm font-medium transition active:scale-95 flex flex-col items-center justify-center ${isTaken ? 'bg-stone-100 text-stone-300 border-stone-100 cursor-not-allowed' : 'bg-white hover:bg-emerald-600 hover:text-white hover:border-emerald-600 text-stone-600 border-stone-200'}`}>{time}{isTaken && <span className="text-[9px] font-normal">已額滿</span>}</button>); })}</div>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {dynamicSlots.map(slot => { 
+                                                        const isTaken = bookedSlots.includes(slot.time); 
+                                                        return (
+                                                            <button key={slot.label} onClick={() => !isTaken && handleTimeSelect(slot)} disabled={isTaken} className={`py-3 px-1 border rounded-lg text-sm font-medium transition active:scale-95 flex flex-col items-center justify-center ${isTaken ? 'bg-stone-100 text-stone-300 border-stone-100 cursor-not-allowed' : 'bg-white hover:bg-emerald-600 hover:text-white hover:border-emerald-600 text-stone-600 border-stone-200'}`}>
+                                                                {slot.label}
+                                                                {isTaken && <span className="text-[9px] font-normal">已額滿</span>}
+                                                            </button>
+                                                        ); 
+                                                    })}
+                                                </div>
                                             </div>
                                         )}
                                         {step === 4 && (
                                             <div className="space-y-6 animate-fade-in-up">
-                                                <div className="bg-white border border-stone-100 shadow-lg rounded-2xl overflow-hidden"><div className="bg-emerald-600 p-3 text-white font-bold text-center">預約確認</div><div className="p-5 space-y-3 text-sm"><div className="flex justify-between"><span className="text-stone-400">課程</span><span className="font-medium text-stone-700">{selectedService.name}</span></div><div className="flex justify-between"><span className="text-stone-400">老師</span><span className="font-medium text-stone-700">{selectedStaff.name}</span></div><div className="flex justify-between"><span className="text-stone-400">時間</span><span className="font-bold text-emerald-600">{selectedDate} {selectedTime}</span></div><div className="pt-3 border-t border-stone-100 flex justify-between items-center"><span className="text-stone-400">費用</span><span className="text-xl font-bold text-stone-800">${selectedService.price}</span></div></div></div>
+                                                <div className="bg-white border border-stone-100 shadow-lg rounded-2xl overflow-hidden"><div className="bg-emerald-600 p-3 text-white font-bold text-center">預約確認</div><div className="p-5 space-y-3 text-sm"><div className="flex justify-between"><span className="text-stone-400">課程</span><span className="font-medium text-stone-700">{selectedService.name}</span></div><div className="flex justify-between"><span className="text-stone-400">老師</span><span className="font-medium text-stone-700">{selectedStaff.name}</span></div><div className="flex justify-between"><span className="text-stone-400">時間</span><span className="font-bold text-emerald-600">{selectedDate} {selectedTimeObj?.label}</span></div><div className="pt-3 border-t border-stone-100 flex justify-between items-center"><span className="text-stone-400">費用</span><span className="text-xl font-bold text-stone-800">${selectedService.price}</span></div></div></div>
                                                 <div className="space-y-4"><div><label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">姓名</label><input type="text" placeholder="您的稱呼" value={customerInfo.name} onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})} className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"/></div><div><label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">手機</label><div className="relative"><div className="absolute left-0 top-0 bottom-0 flex items-center pl-4 pointer-events-none"><span className="text-stone-500 font-bold border-r border-stone-300 pr-2 mr-2">09</span></div><input type="tel" maxLength="8" value={customerInfo.phone} onChange={(e) => { const val = e.target.value.replace(/\D/g, ''); setCustomerInfo({...customerInfo, phone: val}); setError(''); }} className={`w-full pl-16 pr-4 py-3 bg-stone-50 border rounded-xl focus:ring-2 outline-none ${error ? 'border-red-500 bg-red-50' : 'border-stone-200 focus:ring-emerald-500'}`}/></div>{error && <p className="text-red-500 text-xs mt-1 ml-1">{error}</p>}</div></div>
                                                 <button onClick={handleConfirm} disabled={isSubmitting} className={`w-full text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-95 transition-all ${isSubmitting ? 'bg-stone-400 cursor-not-allowed' : 'bg-stone-800 hover:bg-stone-900'}`}>{isSubmitting ? '處理中...' : '確認預約'}</button>
                                             </div>
@@ -436,9 +502,8 @@
                                                 <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4"><Icon name="check" size={40} className="text-emerald-600" /></div>
                                                 <h2 className="text-2xl font-bold text-stone-800 mb-2">預約成功！</h2>
                                                 <p className="text-stone-500 text-sm mb-8">感謝您的預約，期待與您在墊上相見。</p>
-                                                <div className="bg-stone-50 p-6 rounded-2xl text-left mb-6 border border-stone-200"><div className="flex items-center mb-4"><Icon name="calendar" className="mr-3 text-emerald-500"/><div><h3 className="font-bold text-stone-800">{selectedDate}</h3><p className="text-emerald-600 font-bold">{selectedTime}</p></div></div><div className="text-sm text-stone-500 space-y-1 pl-9 border-l-2 border-stone-200 ml-2"><p>課程：{selectedService.name}</p><p>老師：{selectedStaff.name}</p><p>電話：09{customerInfo.phone}</p></div></div>
+                                                <div className="bg-stone-50 p-6 rounded-2xl text-left mb-6 border border-stone-200"><div className="flex items-center mb-4"><Icon name="calendar" className="mr-3 text-emerald-500"/><div><h3 className="font-bold text-stone-800">{selectedDate}</h3><p className="text-emerald-600 font-bold">{selectedTimeObj?.label}</p></div></div><div className="text-sm text-stone-500 space-y-1 pl-9 border-l-2 border-stone-200 ml-2"><p>課程：{selectedService.name}</p><p>老師：{selectedStaff.name}</p><p>電話：09{customerInfo.phone}</p></div></div>
                                                 
-                                                {/* ★ Google Calendar 按鈕 (放在最顯眼位置) */}
                                                 <a href={generateGoogleCalendarUrl()} target="_blank" className="block w-full bg-white border border-slate-200 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 hover:text-emerald-600 transition mb-3 flex items-center justify-center shadow-sm">
                                                     <Icon name="calendar-plus" size={18} className="mr-2"/> 加入 Google 日曆
                                                 </a>
@@ -450,13 +515,12 @@
                                 </>
                             )}
 
-                            {/* 分頁：我的訂單 */}
                             {activeTab === 'orders' && <MyBookingsView onUpdateCount={setBadgeCount} />}
                         </div>
 
                         {/* 底部導覽列 */}
                         <div className="bg-white border-t border-slate-200 p-2 flex justify-around items-center absolute bottom-0 w-full shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-30">
-                            <button onClick={() => { setActiveTab('booking'); if(step === 5) setStep(1); }} className={`flex flex-col items-center flex-1 py-2 rounded-xl transition active:scale-95 ${activeTab === 'booking' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}>
+                            <button onClick={() => { setActiveTab('booking'); if(step === 5) { setStep(1); setSelectedTimeObj(null); } }} className={`flex flex-col items-center flex-1 py-2 rounded-xl transition active:scale-95 ${activeTab === 'booking' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}>
                                 <Icon name="calendar-plus" size={24} className="mb-1"/>
                                 <span className="text-[10px] font-bold">預約課程</span>
                             </button>
@@ -469,10 +533,8 @@
                             </button>
                         </div>
 
-                        {/* 開發者入口 */}
                         <a href="admin.html" className="absolute bottom-20 right-4 bg-slate-800/10 text-slate-400 p-2 rounded-full hover:bg-slate-800 hover:text-white transition z-20" title="前往商家後台"><Icon name="settings" size={16} /></a>
 
-                        {/* Modal */}
                         {showInfoModal && <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6 backdrop-blur-sm animate-fade-in-up"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm relative"><button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><Icon name="x" size={24} /></button><h3 className="text-xl font-bold text-stone-800 mb-4 flex items-center"><Icon name="info" className="mr-2 text-emerald-500" /> 課程預約須知</h3><div className="text-sm text-stone-600 space-y-3 leading-relaxed whitespace-pre-wrap">{storeInfo.terms}</div><button onClick={() => setShowInfoModal(false)} className="w-full mt-6 bg-stone-800 text-white py-3 rounded-xl font-bold hover:bg-stone-900 transition">我了解了</button></div></div>}
                     </div>
                 </div>
