@@ -35,11 +35,41 @@
         const supabaseKey = 'sb_publishable_7RUbenk2kXNDmvuo1XtHbQ_m0RjXuZr'; 
         const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-        const ALL_TIME_SLOTS = [];
-        for (let h = 8; h <= 21; h++) {
-            ALL_TIME_SLOTS.push(`${h.toString().padStart(2, '0')}:00`);
-            if (h < 21) ALL_TIME_SLOTS.push(`${h.toString().padStart(2, '0')}:30`);
-        }
+        // ★ 升級版：生成時段 (支援跨日)
+        const generateTimeSlots = (openTime = "09:00", closeTime = "21:00") => {
+            const slots = [];
+            const [openH, openM] = openTime.split(':').map(Number);
+            const [closeH, closeM] = closeTime.split(':').map(Number);
+
+            let startMinutes = openH * 60 + openM;
+            let endMinutes = closeH * 60 + closeM;
+
+            // 處理跨日：如果結束時間小於開始時間，加 24小時
+            if (endMinutes < startMinutes) {
+                endMinutes += 24 * 60;
+            }
+
+            for (let m = startMinutes; m < endMinutes; m += 30) {
+                let h = Math.floor(m / 60);
+                let min = m % 60;
+                let isNextDay = false;
+                
+                if (h >= 24) {
+                    h -= 24;
+                    isNextDay = true;
+                }
+
+                const timeStr = `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+                
+                slots.push({
+                    time: timeStr,
+                    isNextDay: isNextDay,
+                    label: isNextDay ? `${timeStr} (隔日)` : timeStr,
+                    sortValue: m 
+                });
+            }
+            return slots;
+        };
 
         const Icon = ({ name, size = 20, className = "" }) => {
             const ref = useRef(null);
@@ -246,6 +276,7 @@
             );
         }
 
+        // --- 排班管理 (支援跨日) ---
         function ScheduleManager({ supabase, storeId }) {
             const [staffList, setStaffList] = useState([]);
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -253,11 +284,22 @@
             const [blockedSlots, setBlockedSlots] = useState([]);
             const [loading, setLoading] = useState(false);
             const [showFormModal, setShowFormModal] = useState(false);
-            const [leaveData, setLeaveData] = useState({ start: '08:00', end: '12:00', reason: '事假' });
+            const [leaveData, setLeaveData] = useState({ start: '', end: '', reason: '事假' });
             const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', details: [], onConfirm: null, isDelete: false });
+            const [timeSlots, setTimeSlots] = useState([]); // 動態時段
 
-            useEffect(() => { fetchStaff(); }, [storeId]);
+            useEffect(() => { fetchStaff(); fetchStoreInfo(); }, [storeId]);
             useEffect(() => { if (selectedStaff) fetchSchedule(); }, [selectedStaff, selectedDate, storeId]);
+
+            async function fetchStoreInfo() {
+                const { data } = await supabase.from('stores').select('open_time, close_time').eq('id', storeId).single();
+                if (data) {
+                    const slots = generateTimeSlots(data.open_time || "09:00", data.close_time || "21:00");
+                    setTimeSlots(slots);
+                    // 設定預設請假時間
+                    setLeaveData(prev => ({...prev, start: slots[0]?.time, end: slots[slots.length-1]?.time}));
+                }
+            }
 
             async function fetchStaff() {
                 const { data } = await supabase.from('staff').select('*').eq('store_id', storeId);
@@ -271,9 +313,17 @@
             async function fetchSchedule() {
                 if(!selectedStaff) return;
                 setLoading(true);
-                const { data } = await supabase.from('bookings').select('booking_time, status, id, customer_name')
+                // 擴大查詢範圍：如果是跨日營業，可能會有隔天的訂單，所以查2天
+                const nextDate = new Date(selectedDate);
+                nextDate.setDate(nextDate.getDate() + 1);
+                const nextDateStr = nextDate.toISOString().split('T')[0];
+
+                const { data } = await supabase.from('bookings').select('booking_date, booking_time, status, id, customer_name')
                     .eq('store_id', storeId)
-                    .eq('staff_name', selectedStaff.name).eq('booking_date', selectedDate).neq('status', 'cancelled');
+                    .eq('staff_name', selectedStaff.name)
+                    .in('booking_date', [selectedDate, nextDateStr])
+                    .neq('status', 'cancelled');
+                
                 if (data) setBlockedSlots(data);
                 setLoading(false);
             }
@@ -284,61 +334,120 @@
                 setSelectedDate(date.toISOString().split('T')[0]);
             };
 
-            async function toggleSlot(time, existingBooking) {
+            async function toggleSlot(slotObj, existingBooking) {
                 if (existingBooking) {
                     if (existingBooking.status === 'blocked') {
                         setConfirmModal({
                             isOpen: true, title: '確認取消休假', isDelete: true,
-                            details: [{ label: '人員', value: selectedStaff?.name }, { label: '日期', value: selectedDate }, { label: '時間', value: time }, { label: '事由', value: existingBooking.customer_name || '無' }],
+                            details: [{ label: '人員', value: selectedStaff?.name }, { label: '日期', value: selectedDate }, { label: '時間', value: slotObj.label }, { label: '事由', value: existingBooking.customer_name || '無' }],
                             onConfirm: async () => { await supabase.from('bookings').delete().eq('id', existingBooking.id); setConfirmModal({ ...confirmModal, isOpen: false }); fetchSchedule(); }
                         });
                     } else { alert("這是客人的預約，請至儀表板取消訂單。"); }
                 } else {
-                    setLeaveData({ start: time, end: time, reason: '臨時排休' });
+                    setLeaveData({ start: slotObj.time, end: slotObj.time, reason: '臨時排休', isStartNextDay: slotObj.isNextDay, isEndNextDay: slotObj.isNextDay });
                     setShowFormModal(true);
                 }
             }
 
             function handlePrepareBulkLeave() {
                 if (!leaveData.reason) return alert("請輸入請假原因");
-                const startIndex = ALL_TIME_SLOTS.indexOf(leaveData.start);
-                const endIndex = ALL_TIME_SLOTS.indexOf(leaveData.end);
+                
+                // 找出 start 和 end 在 timeSlots 中的索引
+                const startIndex = timeSlots.findIndex(s => s.time === leaveData.start);
+                const endIndex = timeSlots.findIndex(s => s.time === leaveData.end);
+                
                 if (startIndex === -1 || endIndex === -1) return alert("時間範圍無效");
-                const effectiveEndIndex = endIndex === startIndex ? startIndex + 1 : endIndex;
-                if (startIndex > effectiveEndIndex) return alert("時間範圍無效");
+                
+                // 處理跨日邏輯：如果 endIndex 比 startIndex 小（例如 23:00 到 02:00），說明跨過列表末尾重新循環？
+                // 實際上 generateTimeSlots 已經排好序了 (09:00...23:30...02:00)，所以直接比較 index 即可
+                // 但為了保險，我們假設使用者選的範圍是合法的 (startIndex <= endIndex)
+                
+                const effectiveEndIndex = endIndex < startIndex ? startIndex : endIndex; // 簡單防呆
+                
+                // 顯示確認框
+                const startLabel = timeSlots[startIndex].label;
+                const endLabel = timeSlots[effectiveEndIndex].label;
 
                 setConfirmModal({
                     isOpen: true, title: '確認排休資訊', isDelete: false,
-                    details: [{ label: '服務人員', value: selectedStaff?.name }, { label: '請假日期', value: selectedDate }, { label: '請假時間', value: `${leaveData.start} ~ ${leaveData.end === leaveData.start ? leaveData.start : ALL_TIME_SLOTS[effectiveEndIndex] || leaveData.end}` }, { label: '請假事由', value: leaveData.reason }],
+                    details: [{ label: '服務人員', value: selectedStaff?.name }, { label: '請假日期', value: selectedDate }, { label: '請假時間', value: `${startLabel} ~ ${endLabel}` }, { label: '請假事由', value: leaveData.reason }],
                     onConfirm: async () => { await executeBulkLeave(startIndex, effectiveEndIndex); setConfirmModal({ ...confirmModal, isOpen: false }); setShowFormModal(false); }
                 });
             }
 
             async function executeBulkLeave(startIndex, endIndex) {
                 if(!selectedStaff) return;
-                const targetSlots = ALL_TIME_SLOTS.slice(startIndex, endIndex);
-                const newBookings = targetSlots.map(time => ({
-                    store_id: storeId,
-                    staff_name: selectedStaff.name, booking_date: selectedDate, booking_time: time, status: 'blocked', customer_name: leaveData.reason, service_name: '排休/請假'
-                }));
+                
+                const targetSlots = timeSlots.slice(startIndex, endIndex + 1); // 包含結束時間
+                const newBookings = targetSlots.map(slot => {
+                    // 計算正確日期
+                    let bookingDate = selectedDate;
+                    if (slot.isNextDay) {
+                        const d = new Date(selectedDate);
+                        d.setDate(d.getDate() + 1);
+                        bookingDate = d.toISOString().split('T')[0];
+                    }
+
+                    return {
+                        store_id: storeId,
+                        staff_name: selectedStaff.name,
+                        booking_date: bookingDate,
+                        booking_time: slot.time,
+                        status: 'blocked',
+                        customer_name: leaveData.reason,
+                        service_name: '排休/請假'
+                    };
+                });
+
                 const { error } = await supabase.from('bookings').insert(newBookings);
                 if (error) alert("請假設定失敗: " + error.message); else fetchSchedule();
             }
 
             return (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 relative">
-                    <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-lg">排班與休假管理</h3><button onClick={() => { setLeaveData({ start: '08:00', end: '12:00', reason: '事假' }); setShowFormModal(true); }} className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-600 flex items-center shadow-md active:scale-95 transition"><Icon name="calendar-off" size={16} className="mr-2"/> 新增排休/請假</button></div>
+                    <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-lg">排班與休假管理</h3><button onClick={() => { setShowFormModal(true); }} className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-600 flex items-center shadow-md active:scale-95 transition"><Icon name="calendar-off" size={16} className="mr-2"/> 新增排休/請假</button></div>
                     <div className="flex flex-col md:flex-row gap-6 mb-8">
                         <div><label className="block text-xs font-bold text-slate-500 mb-2">選擇日期</label><div className="flex items-center gap-2"><button onClick={() => changeDate(-1)} className="p-3 border rounded-xl hover:bg-slate-100 transition active:scale-95"><Icon name="chevron-left" size={18}/></button><input type="date" className="p-3 border rounded-xl bg-gray-50 text-center font-bold text-slate-700" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}/><button onClick={() => changeDate(1)} className="p-3 border rounded-xl hover:bg-slate-100 transition active:scale-95"><Icon name="chevron-right" size={18}/></button></div></div>
                         <div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-2">選擇人員</label><div className="flex space-x-2 overflow-x-auto pb-2">{staffList.map(s => (<button key={s.id} onClick={() => setSelectedStaff(s)} className={`flex items-center px-4 py-3 rounded-full border transition whitespace-nowrap ${selectedStaff?.id === s.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}><img src={s.avatar} className="w-6 h-6 rounded-full mr-2 bg-gray-200" />{s.name}</button>))}</div></div>
                     </div>
                     <div className="border-t border-gray-100 pt-6">
                         <h4 className="font-bold text-slate-700 mb-4 flex items-center">{selectedDate} 的時段狀態 {loading && <span className="ml-2 text-xs text-slate-400 font-normal">讀取中...</span>}</h4>
-                        <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-3">{ALL_TIME_SLOTS.map(time => { const booking = blockedSlots.find(b => b.booking_time === time); const isCustomer = booking && booking.status !== 'blocked'; const isLeave = booking && booking.status === 'blocked'; return (<button key={time} onClick={() => toggleSlot(time, booking)} className={`p-2 rounded-lg border text-center transition relative overflow-hidden group min-h-[70px] flex flex-col items-center justify-center ${isCustomer ? 'bg-emerald-100 border-emerald-200 cursor-not-allowed' : isLeave ? 'bg-red-50 border-red-200' : 'bg-white hover:border-slate-400'}`}><div className="font-bold text-sm mb-1">{time}</div><div className={`text-[10px] font-bold ${isCustomer ? 'text-emerald-700' : isLeave ? 'text-red-500' : 'text-slate-300'}`}>{isCustomer ? '🟢 預約' : isLeave ? `⛔ ${isLeave ? (booking.customer_name || '休假') : ''}` : '⚪️ 空'}</div></button>); })}</div>
+                        {/* 使用動態 timeSlots */}
+                        <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                            {timeSlots.map(slot => { 
+                                // 判斷此時段是否有訂單
+                                // 需同時比對時間與日期 (處理跨日)
+                                const slotDateStr = slot.isNextDay ? new Date(new Date(selectedDate).setDate(new Date(selectedDate).getDate() + 1)).toISOString().split('T')[0] : selectedDate;
+                                
+                                const booking = blockedSlots.find(b => b.booking_time === slot.time && b.booking_date === slotDateStr);
+                                const isCustomer = booking && booking.status !== 'blocked';
+                                const isLeave = booking && booking.status === 'blocked';
+                                
+                                return (
+                                    <button key={slot.label} onClick={() => toggleSlot(slot, booking)} className={`p-2 rounded-lg border text-center transition relative overflow-hidden group min-h-[70px] flex flex-col items-center justify-center ${isCustomer ? 'bg-emerald-100 border-emerald-200 cursor-not-allowed' : isLeave ? 'bg-red-50 border-red-200' : 'bg-white hover:border-slate-400'}`}>
+                                        <div className="font-bold text-sm mb-1">{slot.label}</div>
+                                        <div className={`text-[10px] font-bold ${isCustomer ? 'text-emerald-700' : isLeave ? 'text-red-500' : 'text-slate-300'}`}>{isCustomer ? '🟢 預約' : isLeave ? `⛔ ${isLeave ? (booking.customer_name || '休假') : ''}` : '⚪️ 空'}</div>
+                                    </button>
+                                ); 
+                            })}
+                        </div>
                     </div>
                     <MonthlyOverview supabase={supabase} selectedDate={selectedDate} staffList={staffList} storeId={storeId} />
                     {showFormModal && (
-                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md animate-fade-in-up"><div className="flex justify-between items-center mb-6 border-b pb-4"><h3 className="text-xl font-bold text-slate-800">新增排休 / 請假</h3><button onClick={() => setShowFormModal(false)} className="text-slate-400 hover:text-slate-600"><Icon name="x" /></button></div><div className="space-y-4"><div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600 mb-2">為 <strong>{selectedStaff?.name}</strong> 設定 <strong>{selectedDate}</strong> 的休假</div><div><label className="block text-xs font-bold text-slate-500 mb-1">請假原因</label><select className="w-full p-3 border rounded-xl bg-white" value={leaveData.reason} onChange={e => setLeaveData({...leaveData, reason: e.target.value})}><option value="事假">事假</option><option value="病假">病假</option><option value="公休">公休</option><option value="進修">進修課程</option><option value="用餐">用餐休息</option><option value="臨時排休">臨時排休</option></select></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 mb-1">開始時間</label><select className="w-full p-3 border rounded-xl bg-white" value={leaveData.start} onChange={e => setLeaveData({...leaveData, start: e.target.value})}>{ALL_TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}</select></div><div><label className="block text-xs font-bold text-slate-500 mb-1">結束時間 (含)</label><select className="w-full p-3 border rounded-xl bg-white" value={leaveData.end} onChange={e => setLeaveData({...leaveData, end: e.target.value})}>{ALL_TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}</select></div></div><div className="flex justify-end space-x-2 pt-4"><button onClick={() => setShowFormModal(false)} className="px-4 py-3 text-slate-500 hover:bg-slate-100 rounded-xl font-bold">取消</button><button onClick={handlePrepareBulkLeave} className="px-6 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 shadow-lg active:scale-95 transition">下一步：確認</button></div></div></div></div>
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md animate-fade-in-up">
+                                <div className="flex justify-between items-center mb-6 border-b pb-4"><h3 className="text-xl font-bold text-slate-800">新增排休 / 請假</h3><button onClick={() => setShowFormModal(false)} className="text-slate-400 hover:text-slate-600"><Icon name="x" /></button></div>
+                                <div className="space-y-4">
+                                    <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-600 mb-2">為 <strong>{selectedStaff?.name}</strong> 設定 <strong>{selectedDate}</strong> 的休假</div>
+                                    <div><label className="block text-xs font-bold text-slate-500 mb-1">請假原因</label><select className="w-full p-3 border rounded-xl bg-white" value={leaveData.reason} onChange={e => setLeaveData({...leaveData, reason: e.target.value})}><option value="事假">事假</option><option value="病假">病假</option><option value="公休">公休</option><option value="進修">進修課程</option><option value="用餐">用餐休息</option><option value="臨時排休">臨時排休</option></select></div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="block text-xs font-bold text-slate-500 mb-1">開始時間</label><select className="w-full p-3 border rounded-xl bg-white" value={leaveData.start} onChange={e => setLeaveData({...leaveData, start: e.target.value})}>{timeSlots.map(t => <option key={t.time} value={t.time}>{t.label}</option>)}</select></div>
+                                        <div><label className="block text-xs font-bold text-slate-500 mb-1">結束時間 (含)</label><select className="w-full p-3 border rounded-xl bg-white" value={leaveData.end} onChange={e => setLeaveData({...leaveData, end: e.target.value})}>{timeSlots.map(t => <option key={t.time} value={t.time}>{t.label}</option>)}</select></div>
+                                    </div>
+                                    <div className="flex justify-end space-x-2 pt-4"><button onClick={() => setShowFormModal(false)} className="px-4 py-3 text-slate-500 hover:bg-slate-100 rounded-xl font-bold">取消</button><button onClick={handlePrepareBulkLeave} className="px-6 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 shadow-lg active:scale-95 transition">下一步：確認</button></div>
+                                </div>
+                            </div>
+                        </div>
                     )}
                     {confirmModal.isOpen && (
                         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm animate-fade-in-up border-2 border-slate-100"><div className="text-center mb-6"><div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${confirmModal.isDelete ? 'bg-red-100 text-red-500' : 'bg-emerald-100 text-emerald-600'}`}><Icon name={confirmModal.isDelete ? 'trash-2' : 'check-circle'} size={32} /></div><h3 className="text-xl font-bold text-slate-800">{confirmModal.title}</h3><p className="text-sm text-slate-400 mt-1">請核對以下資訊是否正確</p></div><div className="bg-slate-50 rounded-xl p-4 space-y-3 mb-6">{confirmModal.details.map((detail, idx) => (<div key={idx} className="flex justify-between text-sm border-b border-slate-100 last:border-0 pb-2 last:pb-0"><span className="text-slate-500 font-bold">{detail.label}</span><span className="text-slate-800 font-medium">{detail.value}</span></div>))}</div><div className="flex gap-3"><button onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition">再想一下</button><button onClick={confirmModal.onConfirm} className={`flex-1 py-3 text-white font-bold rounded-xl shadow-lg active:scale-95 transition ${confirmModal.isDelete ? 'bg-red-500 hover:bg-red-600' : 'bg-slate-800 hover:bg-slate-900'}`}>確認執行</button></div></div></div>
@@ -490,7 +599,7 @@
             };
 
             const copyLink = (id) => {
-                // 使用 URL 建構子，自動處理子目錄路徑 (GitHub Pages 必備)
+                // 使用 URL 建構子，自動抓取當前路徑 (包含 GitHub Pages 的專案名稱子目錄)
                 const url = new URL(`staff.html?id=${id}`, window.location.href).href;
                 navigator.clipboard.writeText(url);
                 alert("已複製老師專屬連結！\n請貼到 LINE 給老師：" + url);
@@ -522,7 +631,7 @@
 
         // --- 5. 商店設定管理 ---
         function SettingsManager({ supabase, storeId }) {
-            const [store, setStore] = useState({ name: '', address: '', line_url: '', description: '', terms: '' });
+            const [store, setStore] = useState({ name: '', address: '', line_url: '', description: '', terms: '', open_time: '09:00', close_time: '21:00' });
             const [loading, setLoading] = useState(false);
 
             useEffect(() => { fetchStore(); }, [storeId]);
@@ -543,12 +652,38 @@
                 else alert("設定已更新！");
             }
 
+            // 生成時間選項 (06:00 ~ 03:00)
+            const timeOptions = [];
+            for(let h=0; h<24; h++) {
+                timeOptions.push(`${h.toString().padStart(2,'0')}:00`);
+                timeOptions.push(`${h.toString().padStart(2,'0')}:30`);
+            }
+
             return (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                     <h3 className="font-bold text-lg mb-6">商店基本設定</h3>
                     <div className="space-y-6">
-                        <div><label className="block text-xs font-bold text-slate-500 mb-1">店名</label><input className="w-full p-3 border rounded-xl" value={store.name} onChange={e => setStore({...store, name: e.target.value})} /></div>
-                        <div><label className="block text-xs font-bold text-slate-500 mb-1">地址</label><input className="w-full p-3 border rounded-xl" value={store.address} onChange={e => setStore({...store, address: e.target.value})} /></div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="block text-xs font-bold text-slate-500 mb-1">店名</label><input className="w-full p-3 border rounded-xl" value={store.name} onChange={e => setStore({...store, name: e.target.value})} /></div>
+                            <div><label className="block text-xs font-bold text-slate-500 mb-1">地址</label><input className="w-full p-3 border rounded-xl" value={store.address} onChange={e => setStore({...store, address: e.target.value})} /></div>
+                        </div>
+                        
+                        {/* 營業時間設定 */}
+                        <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">營業開始時間</label>
+                                <select className="w-full p-3 border rounded-xl bg-white" value={store.open_time || '09:00'} onChange={e => setStore({...store, open_time: e.target.value})}>
+                                    {timeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">營業結束時間 (可跨日)</label>
+                                <select className="w-full p-3 border rounded-xl bg-white" value={store.close_time || '21:00'} onChange={e => setStore({...store, close_time: e.target.value})}>
+                                    {timeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+                        </div>
+
                         <div><label className="block text-xs font-bold text-slate-500 mb-1">LINE 官方帳號連結</label><input className="w-full p-3 border rounded-xl" value={store.line_url} onChange={e => setStore({...store, line_url: e.target.value})} /></div>
                         <div><label className="block text-xs font-bold text-slate-500 mb-1">首頁標語 (Description)</label><textarea className="w-full p-3 border rounded-xl h-24" value={store.description} onChange={e => setStore({...store, description: e.target.value})} /></div>
                         <div><label className="block text-xs font-bold text-slate-500 mb-1">預約須知 & 注意事項 (Terms)</label><textarea className="w-full p-3 border rounded-xl h-40" value={store.terms} onChange={e => setStore({...store, terms: e.target.value})} placeholder="例如：請提前10分鐘到場..." /></div>
@@ -737,6 +872,7 @@
                         </div>
                         
                         <div className="p-6 max-w-5xl mx-auto pb-20">
+                            {/* ★ 關鍵：將 storeId 傳遞給所有子組件 */}
                             {currentView === 'dashboard' && <DashboardView supabase={supabaseClient} storeId={currentStore.id} />}
                             {currentView === 'schedule' && <ScheduleManager supabase={supabaseClient} storeId={currentStore.id} />}
                             {currentView === 'services' && <ServiceManager supabase={supabaseClient} storeId={currentStore.id} />}
