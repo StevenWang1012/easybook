@@ -1,11 +1,11 @@
 const { useState, useEffect, useRef, useMemo } = React;
 
-// ★ 設定 Supabase 連線
+// ★ Supabase 設定
 const supabaseUrl = 'https://kwvbhzjzysmivafsvwng.supabase.co';
 const supabaseKey = 'sb_publishable_7RUbenk2kXNDmvuo1XtHbQ_m0RjXuZr'; 
 const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-// 動態生成時段
+// --- 共用工具 ---
 const generateTimeSlots = () => {
     const slots = [];
     for (let h = 8; h <= 21; h++) {
@@ -16,7 +16,6 @@ const generateTimeSlots = () => {
 };
 const ALL_TIME_SLOTS = generateTimeSlots();
 
-// 圖標元件
 const Icon = ({ name, size = 20, className = "" }) => {
     const ref = useRef(null);
     useEffect(() => {
@@ -33,14 +32,14 @@ const Icon = ({ name, size = 20, className = "" }) => {
     return <span ref={ref} className="inline-flex items-center justify-center"></span>;
 };
 
-// --- 1. 儀表板 (升級版：支援排休合併 & 失約狀態) ---
+// --- 1. 儀表板 ---
 function DashboardView({ supabase }) {
     const [bookings, setBookings] = useState([]);
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
-    const [tab, setTab] = useState('bookings'); // bookings | leaves
-    const [timeFilter, setTimeFilter] = useState('today'); // today | tomorrow | all
+    const [tab, setTab] = useState('bookings');
+    const [timeFilter, setTimeFilter] = useState('today');
 
     useEffect(() => { fetchData(); }, []);
 
@@ -56,9 +55,8 @@ function DashboardView({ supabase }) {
             if (bookingRes.error) throw bookingRes.error;
             setBookings(bookingRes.data || []);
             setServices(serviceRes.data || []);
-
         } catch (err) {
-            console.error("讀取失敗:", err);
+            console.error(err);
             setErrorMsg(err.message || "無法讀取資料");
         } finally {
             setLoading(false);
@@ -71,42 +69,23 @@ function DashboardView({ supabase }) {
             const { error } = await supabase.from('bookings').update({ status: newStatus }).eq('id', id);
             if (error) throw error;
             fetchData();
-        } catch (err) {
-            alert("操作失敗: " + err.message);
-        }
+        } catch (err) { alert("操作失敗: " + err.message); }
     }
 
-    // ★ 新增：合併排休時段邏輯
     const mergeLeaveSlots = (leaves) => {
         if (leaves.length === 0) return [];
-        
-        const sorted = [...leaves].sort((a, b) => {
-            if (a.staff_name !== b.staff_name) return a.staff_name.localeCompare(b.staff_name);
-            if (a.booking_date !== b.booking_date) return a.booking_date.localeCompare(b.booking_date);
-            return a.booking_time.localeCompare(b.booking_time);
-        });
-
+        const sorted = [...leaves].sort((a, b) => a.booking_time.localeCompare(b.booking_time));
         const merged = [];
         let currentGroup = null;
-
         sorted.forEach((leave) => {
-            if (currentGroup && 
-                currentGroup.staff_name === leave.staff_name && 
-                currentGroup.booking_date === leave.booking_date && 
-                currentGroup.reason === leave.customer_name) {
-                
+            if (currentGroup && currentGroup.staff_name === leave.staff_name && currentGroup.booking_date === leave.booking_date && currentGroup.reason === leave.customer_name) {
                 currentGroup.endTime = leave.booking_time;
                 currentGroup.ids.push(leave.id);
             } else {
                 if (currentGroup) merged.push(currentGroup);
                 currentGroup = {
-                    id: leave.id,
-                    ids: [leave.id],
-                    staff_name: leave.staff_name,
-                    booking_date: leave.booking_date,
-                    startTime: leave.booking_time,
-                    endTime: leave.booking_time,
-                    reason: leave.customer_name
+                    id: leave.id, ids: [leave.id], staff_name: leave.staff_name, booking_date: leave.booking_date,
+                    startTime: leave.booking_time, endTime: leave.booking_time, reason: leave.customer_name
                 };
             }
         });
@@ -114,16 +93,13 @@ function DashboardView({ supabase }) {
         return merged;
     };
 
-    // --- 批次取消休假 ---
     async function batchCancelLeave(ids) {
         if(!confirm(`確定要取消這 ${ids.length} 個排休時段嗎？`)) return;
         try {
             const { error } = await supabase.from('bookings').delete().in('id', ids);
-            if (error) throw error;
+            if(error) throw error;
             fetchData();
-        } catch (err) {
-            alert("取消失敗: " + err.message);
-        }
+        } catch (err) { alert("取消失敗: " + err.message); }
     }
 
     const stats = useMemo(() => {
@@ -133,8 +109,7 @@ function DashboardView({ supabase }) {
         const tmrStr = tomorrow.toISOString().split('T')[0];
 
         let todayRev = 0, todayCount = 0, monthRev = 0, monthCount = 0;
-        const serviceStats = {};
-        const timeStats = {};
+        const serviceStats = {}; const timeStats = {};
 
         let displayList = bookings.filter(b => {
             if (timeFilter === 'today') return b.booking_date === today;
@@ -147,186 +122,59 @@ function DashboardView({ supabase }) {
         const leaveList = mergeLeaveSlots(rawLeaves);
 
         bookings.forEach(b => {
-            // ★ 關鍵：只有 confirmed 或 completed 才算有效訂單與營收 (排除 no_show)
             const isValid = b.status === 'confirmed' || b.status === 'completed';
             const price = services.find(s => s.name === b.service_name)?.price || 0;
-
             if (isValid) {
-                if (b.booking_date.startsWith(today.slice(0, 7))) {
-                    monthRev += price;
-                    monthCount++;
-                }
-                if (b.booking_date === today) {
-                    todayRev += price;
-                    todayCount++;
-                }
+                if (b.booking_date.startsWith(today.slice(0, 7))) { monthRev += price; monthCount++; }
+                if (b.booking_date === today) { todayRev += price; todayCount++; }
                 serviceStats[b.service_name] = (serviceStats[b.service_name] || 0) + 1;
                 const hour = b.booking_time.split(':')[0];
                 timeStats[hour] = (timeStats[hour] || 0) + 1;
             }
         });
-
-        const topServices = Object.entries(serviceStats)
-            .sort(([,a], [,b]) => b - a)
-            .slice(0, 3);
-
-        return { 
-            todayRev, todayCount, monthRev, monthCount, 
-            bookingList, leaveList, topServices, timeStats
-        };
+        const topServices = Object.entries(serviceStats).sort(([,a], [,b]) => b - a).slice(0, 3);
+        return { todayRev, todayCount, monthRev, monthCount, bookingList, leaveList, topServices, timeStats };
     }, [bookings, services, timeFilter]);
 
     return (
         <div className="space-y-6 animate-fade-in-up">
             {errorMsg && <div className="bg-red-50 text-red-700 p-4 rounded-xl flex justify-between items-center"><span className="flex items-center"><Icon name="alert-triangle" className="mr-2"/>{errorMsg}</span><button onClick={fetchData} className="font-bold underline">重試</button></div>}
-
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
-                    <div><p className="text-xs text-slate-400 font-bold mb-1">今日預約</p><h3 className="text-2xl font-black text-slate-800">{stats.todayCount} <span className="text-sm font-normal text-slate-400">單</span></h3></div>
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Icon name="calendar-check" /></div>
-                </div>
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
-                    <div><p className="text-xs text-slate-400 font-bold mb-1">今日營收</p><h3 className="text-2xl font-black text-emerald-600">${stats.todayRev.toLocaleString()}</h3></div>
-                    <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><Icon name="dollar-sign" /></div>
-                </div>
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
-                    <div><p className="text-xs text-slate-400 font-bold mb-1">本月累積營收</p><h3 className="text-2xl font-black text-slate-800">${stats.monthRev.toLocaleString()}</h3></div>
-                    <div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><Icon name="trending-up" /></div>
-                </div>
-                <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-5 rounded-2xl shadow-lg flex flex-col justify-center items-center text-center">
-                    <p className="text-xs opacity-60 mb-1">本月訂單總數</p>
-                    <h3 className="text-3xl font-black text-emerald-400">{stats.monthCount}</h3>
-                </div>
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between"><div><p className="text-xs text-slate-400 font-bold mb-1">今日預約</p><h3 className="text-2xl font-black text-slate-800">{stats.todayCount} <span className="text-sm font-normal text-slate-400">單</span></h3></div><div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Icon name="calendar-check" /></div></div>
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between"><div><p className="text-xs text-slate-400 font-bold mb-1">今日營收</p><h3 className="text-2xl font-black text-emerald-600">${stats.todayRev.toLocaleString()}</h3></div><div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><Icon name="dollar-sign" /></div></div>
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between"><div><p className="text-xs text-slate-400 font-bold mb-1">本月累積營收</p><h3 className="text-2xl font-black text-slate-800">${stats.monthRev.toLocaleString()}</h3></div><div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><Icon name="trending-up" /></div></div>
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-5 rounded-2xl shadow-lg flex flex-col justify-center items-center text-center"><p className="text-xs opacity-60 mb-1">本月訂單總數</p><h3 className="text-3xl font-black text-emerald-400">{stats.monthCount}</h3></div>
             </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[500px]">
                     <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
                         <div className="flex bg-slate-100 p-1 rounded-xl">
-                            <button onClick={() => setTab('bookings')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition ${tab === 'bookings' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                                <Icon name="users" size={16} className="mr-2" /> 客戶預約
-                                <span className="ml-2 bg-slate-100 px-2 rounded-full text-xs text-slate-500">{stats.bookingList.length}</span>
-                            </button>
-                            <button onClick={() => setTab('leaves')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition ${tab === 'leaves' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                                <Icon name="coffee" size={16} className="mr-2" /> 人員排休
-                                <span className="ml-2 bg-slate-100 px-2 rounded-full text-xs text-slate-500">{stats.leaveList.length}</span>
-                            </button>
+                            <button onClick={() => setTab('bookings')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition ${tab === 'bookings' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><Icon name="users" size={16} className="mr-2" /> 客戶預約<span className="ml-2 bg-slate-100 px-2 rounded-full text-xs text-slate-500">{stats.bookingList.length}</span></button>
+                            <button onClick={() => setTab('leaves')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition ${tab === 'leaves' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><Icon name="coffee" size={16} className="mr-2" /> 人員排休<span className="ml-2 bg-slate-100 px-2 rounded-full text-xs text-slate-500">{stats.leaveList.length}</span></button>
                         </div>
-                        <div className="flex gap-2">
-                            <select value={timeFilter} onChange={e => setTimeFilter(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg p-2 font-bold outline-none focus:ring-2 focus:ring-emerald-500">
-                                <option value="today">📅 今日行程</option>
-                                <option value="tomorrow">🌤 明日預告</option>
-                                <option value="all">📚 全部列表</option>
-                            </select>
-                            <button onClick={fetchData} className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg"><Icon name="refresh-cw" size={18}/></button>
-                        </div>
+                        <div className="flex gap-2"><select value={timeFilter} onChange={e => setTimeFilter(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg p-2 font-bold outline-none focus:ring-2 focus:ring-emerald-500"><option value="today">📅 今日行程</option><option value="tomorrow">🌤 明日預告</option><option value="all">📚 全部列表</option></select><button onClick={fetchData} className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg"><Icon name="refresh-cw" size={18}/></button></div>
                     </div>
-
                     <div className="flex-1 overflow-y-auto p-2">
-                        {loading ? <div className="text-center p-10 text-slate-400">載入中...</div> : 
-                         tab === 'bookings' ? (
+                        {loading ? <div className="text-center p-10 text-slate-400">載入中...</div> : tab === 'bookings' ? (
                             stats.bookingList.length === 0 ? <div className="text-center p-10 text-slate-400">目前沒有預約資料 🍃</div> :
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
-                                    <tr><th className="p-3 pl-4">時間</th><th className="p-3">客戶</th><th className="p-3">項目/老師</th><th className="p-3 text-center">狀態</th><th className="p-3 text-right pr-4">操作</th></tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-50">
-                                    {stats.bookingList.map(b => (
-                                        <tr key={b.id} className={`hover:bg-slate-50 transition ${b.status === 'no_show' ? 'opacity-50 grayscale' : ''}`}>
-                                            <td className="p-3 pl-4">
-                                                <div className="font-bold text-slate-800">{b.booking_time}</div>
-                                                <div className="text-xs text-slate-400">{b.booking_date}</div>
-                                            </td>
-                                            <td className="p-3">
-                                                <div className="font-bold text-slate-700">{b.customer_name}</div>
-                                                <div className="text-xs text-slate-400 font-mono">{b.customer_phone}</div>
-                                            </td>
-                                            <td className="p-3">
-                                                <div className="text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded w-fit text-xs mb-1">{b.service_name}</div>
-                                                <div className="text-xs text-slate-500 flex items-center"><Icon name="user" size={10} className="mr-1"/>{b.staff_name}</div>
-                                            </td>
-                                            <td className="p-3 text-center">
-                                                {/* ★ 狀態顯示邏輯更新：包含 no_show */}
-                                                {b.status === 'completed' ? <span className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-xs font-bold">已完成</span> : 
-                                                 b.status === 'cancelled' ? <span className="text-red-400 bg-red-50 px-2 py-1 rounded text-xs font-bold">已取消</span> :
-                                                 b.status === 'no_show' ? <span className="text-gray-500 bg-gray-200 px-2 py-1 rounded text-xs font-bold">未出席</span> :
-                                                 <span className="text-emerald-600 bg-emerald-50 px-2 py-1 rounded text-xs font-bold animate-pulse">進行中</span>}
-                                            </td>
-                                            <td className="p-3 text-right pr-4">
-                                                {b.status === 'confirmed' && (
-                                                    <div className="flex justify-end gap-1">
-                                                        <button onClick={() => updateStatus(b.id, 'completed')} className="p-2 text-emerald-600 hover:bg-emerald-100 rounded" title="完成"><Icon name="check" size={16}/></button>
-                                                        <button onClick={() => updateStatus(b.id, 'cancelled')} className="p-2 text-red-400 hover:bg-red-100 rounded" title="取消"><Icon name="x" size={16}/></button>
-                                                        {/* 老闆也可以手動標記 no_show，但通常由老師操作 */}
-                                                        <button onClick={() => updateStatus(b.id, 'no_show')} className="p-2 text-gray-400 hover:bg-gray-100 rounded" title="標記失約"><Icon name="user-x" size={16}/></button>
-                                                    </div>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            <table className="w-full text-left text-sm"><thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold"><tr><th className="p-3 pl-4">時間</th><th className="p-3">客戶</th><th className="p-3">項目/老師</th><th className="p-3 text-center">狀態</th><th className="p-3 text-right pr-4">操作</th></tr></thead><tbody className="divide-y divide-slate-50">
+                                {stats.bookingList.map(b => (
+                                    <tr key={b.id} className={`hover:bg-slate-50 transition ${b.status === 'no_show' ? 'opacity-50 grayscale' : ''}`}>
+                                        <td className="p-3 pl-4"><div className="font-bold text-slate-800">{b.booking_time}</div><div className="text-xs text-slate-400">{b.booking_date}</div></td>
+                                        <td className="p-3"><div className="font-bold text-slate-700">{b.customer_name}</div><div className="text-xs text-slate-400 font-mono">{b.customer_phone}</div></td>
+                                        <td className="p-3"><div className="text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded w-fit text-xs mb-1">{b.service_name}</div><div className="text-xs text-slate-500 flex items-center"><Icon name="user" size={10} className="mr-1"/>{b.staff_name}</div></td>
+                                        <td className="p-3 text-center">{b.status === 'completed' ? <span className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-xs font-bold">已完成</span> : b.status === 'cancelled' ? <span className="text-red-400 bg-red-50 px-2 py-1 rounded text-xs font-bold">已取消</span> : b.status === 'no_show' ? <span className="text-gray-500 bg-gray-200 px-2 py-1 rounded text-xs font-bold">未出席</span> : <span className="text-emerald-600 bg-emerald-50 px-2 py-1 rounded text-xs font-bold animate-pulse">進行中</span>}</td>
+                                        <td className="p-3 text-right pr-4">{b.status === 'confirmed' && (<div className="flex justify-end gap-1"><button onClick={() => updateStatus(b.id, 'completed')} className="p-2 text-emerald-600 hover:bg-emerald-100 rounded" title="完成"><Icon name="check" size={16}/></button><button onClick={() => updateStatus(b.id, 'cancelled')} className="p-2 text-red-400 hover:bg-red-100 rounded" title="取消"><Icon name="x" size={16}/></button><button onClick={() => updateStatus(b.id, 'no_show')} className="p-2 text-gray-400 hover:bg-gray-100 rounded" title="標記失約"><Icon name="user-x" size={16}/></button></div>)}</td>
+                                    </tr>))}</tbody></table>
                         ) : (
                             stats.leaveList.length === 0 ? <div className="text-center p-10 text-slate-400">全員到齊，無人排休 💪</div> :
-                            <div className="space-y-2 p-2">
-                                {stats.leaveList.map(group => (
-                                    <div key={group.id} className="flex items-center justify-between p-4 bg-red-50 border border-red-100 rounded-xl">
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-center min-w-[100px]">
-                                                <div className="font-bold text-red-800 text-lg">
-                                                    {group.startTime} {group.startTime !== group.endTime && `- ${group.endTime}`}
-                                                </div>
-                                                <div className="text-xs text-red-400 font-bold">{group.booking_date}</div>
-                                                <div className="text-[10px] bg-red-100 text-red-600 px-1 rounded mt-1 inline-block">共 {group.ids.length} 時段</div>
-                                            </div>
-                                            <div>
-                                                <div className="font-bold text-slate-800 flex items-center"><Icon name="user-x" size={16} className="mr-2 text-red-500"/> {group.staff_name}</div>
-                                                <div className="text-sm text-slate-500 mt-1">事由：{group.reason}</div>
-                                            </div>
-                                        </div>
-                                        <button onClick={() => batchCancelLeave(group.ids)} className="px-3 py-1 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100">取消休假</button>
-                                    </div>
-                                ))}
-                            </div>
+                            <div className="space-y-2 p-2">{stats.leaveList.map(group => (<div key={group.id} className="flex items-center justify-between p-4 bg-red-50 border border-red-100 rounded-xl"><div className="flex items-center gap-4"><div className="text-center min-w-[100px]"><div className="font-bold text-red-800 text-lg">{group.startTime} {group.startTime !== group.endTime && `- ${group.endTime}`}</div><div className="text-xs text-red-400 font-bold">{group.booking_date}</div><div className="text-[10px] bg-red-100 text-red-600 px-1 rounded mt-1 inline-block">共 {group.ids.length} 時段</div></div><div><div className="font-bold text-slate-800 flex items-center"><Icon name="user-x" size={16} className="mr-2 text-red-500"/> {group.staff_name}</div><div className="text-sm text-slate-500 mt-1">事由：{group.reason}</div></div></div><button onClick={() => batchCancelLeave(group.ids)} className="px-3 py-1 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100">取消休假</button></div>))}</div>
                         )}
                     </div>
                 </div>
-
                 <div className="space-y-6">
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                        <h4 className="font-bold text-slate-800 mb-4 flex items-center"><Icon name="trophy" className="mr-2 text-yellow-500"/> 熱門課程 Top 3</h4>
-                        <div className="space-y-4">
-                            {stats.topServices.length === 0 ? <p className="text-sm text-slate-400">尚無數據</p> : stats.topServices.map(([name, count], idx) => (
-                                <div key={name} className="flex items-center justify-between">
-                                    <div className="flex items-center">
-                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${idx===0 ? 'bg-yellow-100 text-yellow-700' : idx===1 ? 'bg-slate-100 text-slate-600' : 'bg-orange-50 text-orange-600'}`}>{idx+1}</div>
-                                        <span className="text-sm font-bold text-slate-700">{name}</span>
-                                    </div>
-                                    <span className="text-xs font-bold bg-slate-100 px-2 py-1 rounded text-slate-500">{count} 次</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                        <h4 className="font-bold text-slate-800 mb-4 flex items-center"><Icon name="clock" className="mr-2 text-blue-500"/> 熱門時段分布</h4>
-                        <div className="flex items-end gap-1 h-32 pt-4 border-b border-slate-100">
-                            {['09', '10', '14', '15', '19', '20'].map(hour => {
-                                const val = stats.timeStats[hour] || 0;
-                                const max = Math.max(...Object.values(stats.timeStats), 1);
-                                const h = (val / max) * 100;
-                                return (
-                                    <div key={hour} className="flex-1 flex flex-col items-center justify-end h-full group">
-                                        <div className="w-full bg-blue-100 rounded-t-sm transition-all duration-500 group-hover:bg-blue-400 relative" style={{height: `${h}%`}}>
-                                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold text-blue-600 opacity-0 group-hover:opacity-100 transition">{val}</div>
-                                        </div>
-                                        <span className="text-[10px] text-slate-400 mt-1">{hour}點</span>
-                                    </div>
-                                )
-                            })}
-                        </div>
-                        <p className="text-xs text-slate-400 mt-2 text-center">僅顯示重點時段趨勢</p>
-                    </div>
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100"><h4 className="font-bold text-slate-800 mb-4 flex items-center"><Icon name="trophy" className="mr-2 text-yellow-500"/> 熱門課程 Top 3</h4><div className="space-y-4">{stats.topServices.length === 0 ? <p className="text-sm text-slate-400">尚無數據</p> : stats.topServices.map(([name, count], idx) => (<div key={name} className="flex items-center justify-between"><div className="flex items-center"><div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${idx===0 ? 'bg-yellow-100 text-yellow-700' : idx===1 ? 'bg-slate-100 text-slate-600' : 'bg-orange-50 text-orange-600'}`}>{idx+1}</div><span className="text-sm font-bold text-slate-700">{name}</span></div><span className="text-xs font-bold bg-slate-100 px-2 py-1 rounded text-slate-500">{count} 次</span></div>))}</div></div>
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100"><h4 className="font-bold text-slate-800 mb-4 flex items-center"><Icon name="clock" className="mr-2 text-blue-500"/> 熱門時段分布</h4><div className="flex items-end gap-1 h-32 pt-4 border-b border-slate-100">{['09', '10', '14', '15', '19', '20'].map(hour => { const val = stats.timeStats[hour] || 0; const max = Math.max(...Object.values(stats.timeStats), 1); const h = (val / max) * 100; return (<div key={hour} className="flex-1 flex flex-col items-center justify-end h-full group"><div className="w-full bg-blue-100 rounded-t-sm transition-all duration-500 group-hover:bg-blue-400 relative" style={{height: `${h}%`}}><div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold text-blue-600 opacity-0 group-hover:opacity-100 transition">{val}</div></div><span className="text-[10px] text-slate-400 mt-1">{hour}點</span></div>) })}</div><p className="text-xs text-slate-400 mt-2 text-center">僅顯示重點時段趨勢</p></div>
                 </div>
             </div>
         </div>
@@ -334,49 +182,6 @@ function DashboardView({ supabase }) {
 }
 
 // --- 2. 排班管理 ---
-function MonthlyOverview({ supabase, selectedDate, staffList }) {
-    const [scheduleMap, setScheduleMap] = useState({});
-    const [days, setDays] = useState([]);
-
-    useEffect(() => {
-        const [y, m] = selectedDate.split('-');
-        const year = parseInt(y);
-        const month = parseInt(m) - 1; 
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-        setDays(Array.from({ length: daysInMonth }, (_, i) => i + 1));
-
-        async function fetchMonth() {
-            const start = `${y}-${m}-01`;
-            const end = `${y}-${m}-${daysInMonth}`;
-            const { data } = await supabase.from('bookings').select('staff_name, booking_date, status').gte('booking_date', start).lte('booking_date', end).neq('status', 'cancelled');
-            if (data) {
-                const map = {};
-                data.forEach(b => {
-                    const day = parseInt(b.booking_date.split('-')[2]);
-                    if (!map[b.staff_name]) map[b.staff_name] = {};
-                    const current = map[b.staff_name][day];
-                    if (b.status === 'blocked') map[b.staff_name][day] = 'leave'; 
-                    else if (b.status === 'confirmed' || b.status === 'pending') if (current !== 'leave') map[b.staff_name][day] = 'work';
-                });
-                setScheduleMap(map);
-            }
-        }
-        fetchMonth();
-    }, [selectedDate, supabase]);
-
-    return (
-        <div className="mt-8 pt-6 border-t border-gray-100">
-            <h4 className="font-bold text-slate-700 mb-4 flex items-center"><Icon name="calendar" size={16} className="mr-2" /> 本月排班總覽 ({selectedDate.slice(0, 7)})</h4>
-            <div className="overflow-x-auto pb-2">
-                <table className="w-full text-xs border-collapse min-w-[800px]">
-                    <thead><tr><th className="p-2 border bg-gray-50 text-left sticky left-0 z-10 w-24 border-r-2 border-r-gray-200">人員</th>{days.map(d => <th key={d} className="p-1 border bg-gray-50 min-w-[24px] text-center text-slate-500">{d}</th>)}</tr></thead>
-                    <tbody>{staffList.map(staff => (<tr key={staff.id}><td className="p-2 border bg-white font-bold sticky left-0 z-10 flex items-center border-r-2 border-r-gray-200"><span className="truncate">{staff.name}</span></td>{days.map(d => { const status = scheduleMap[staff.name]?.[d]; let cellClass = "bg-white"; let content = ""; if (status === 'leave') { cellClass = "bg-red-50 text-red-500 font-bold"; content = "休"; } else if (status === 'work') { cellClass = "bg-emerald-50 text-emerald-500"; content = "●"; } return <td key={d} className={`border text-center ${cellClass}`}>{content}</td> })}</tr>))}</tbody>
-                </table>
-            </div>
-        </div>
-    );
-}
-
 function ScheduleManager({ supabase }) {
     const [staffList, setStaffList] = useState([]);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -586,7 +391,7 @@ function ServiceManager({ supabase }) {
     );
 }
 
-// --- 4. 人員管理 (已優化：顯示密碼 & 隨機生成) ---
+// --- 4. 人員管理 ---
 function StaffManager({ supabase }) {
     const [staff, setStaff] = useState([]);
     const [isEditing, setIsEditing] = useState(false);
@@ -650,13 +455,10 @@ function StaffManager({ supabase }) {
         setIsEditing(true);
     }
 
-    // ★ 新增：隨機產生密碼 (已更新為強密碼)
     const generateRandomCode = () => {
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'; // 排除容易混淆的 1, l, I, 0, O
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
         let code = '';
-        for (let i = 0; i < 6; i++) {
-            code += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
+        for (let i = 0; i < 6; i++) { code += chars.charAt(Math.floor(Math.random() * chars.length)); }
         setFormData(prev => ({ ...prev, login_code: code }));
     };
 
@@ -677,33 +479,14 @@ function StaffManager({ supabase }) {
                         <div className="flex-1 grid grid-cols-1 gap-4">
                             <div><label className="text-xs text-slate-500 font-bold">姓名</label><input className="w-full p-2 border rounded" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
                             <div><label className="text-xs text-slate-500 font-bold">職稱</label><input className="w-full p-2 border rounded" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} /></div>
-                            {/* ★ 優化：增加隨機按鈕 */}
-                            <div>
-                                <label className="text-xs text-slate-500 font-bold">後台登入碼 (Passcode)</label>
-                                <div className="flex gap-2">
-                                    <input type="text" maxLength="6" placeholder="例如: Xy7z" className="flex-1 p-2 border rounded font-mono tracking-widest text-center font-bold text-emerald-600" value={formData.login_code} onChange={e => setFormData({...formData, login_code: e.target.value})} />
-                                    <button onClick={generateRandomCode} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 rounded text-slate-600 font-bold text-xs">🎲 隨機</button>
-                                </div>
-                            </div>
+                            <div><label className="text-xs text-slate-500 font-bold">後台登入碼 (Passcode)</label><div className="flex gap-2"><input type="text" maxLength="6" placeholder="例如: Xy7z" className="flex-1 p-2 border rounded font-mono tracking-widest text-center font-bold text-emerald-600" value={formData.login_code} onChange={e => setFormData({...formData, login_code: e.target.value})} /><button onClick={generateRandomCode} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 rounded text-slate-600 font-bold text-xs">🎲 隨機</button></div></div>
                         </div>
                     </div>
                     <div className="flex justify-end space-x-2 mt-4 border-t border-gray-200 pt-4"><button onClick={() => setIsEditing(false)} className="px-4 py-2 text-slate-500 hover:bg-gray-200 rounded">取消</button><button onClick={handleSubmit} className="px-4 py-2 bg-emerald-600 text-white rounded font-bold hover:bg-emerald-700">{formData.id ? '更新資料' : '確認新增'}</button></div>
                 </div>
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{loading ? <div className="text-center text-slate-400 py-4 col-span-2">讀取中...</div> : staff.map(s => (
-                <div key={s.id} className="flex items-center p-4 border border-gray-100 rounded-xl bg-white hover:border-emerald-200 transition">
-                    <img src={s.avatar} className="w-12 h-12 rounded-full bg-gray-200 mr-4 object-cover" />
-                    <div className="flex-1">
-                        <div className="font-bold text-slate-700">{s.name}</div>
-                        <div className="flex items-center text-xs text-slate-400 mb-2">
-                            <span className="mr-2">{s.title}</span>
-                            {/* ★ 優化：直接顯示密碼 */}
-                            <span className="bg-slate-100 px-2 py-0.5 rounded font-mono text-slate-500">Code: <strong>{s.login_code || '0000'}</strong></span>
-                        </div>
-                        <button onClick={() => copyLink(s.id)} className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-1.5 rounded hover:bg-emerald-100 flex items-center w-fit font-bold"><Icon name="link" size={12} className="mr-1"/> 複製專屬連結</button>
-                    </div>
-                    <div className="flex space-x-1"><button onClick={() => openEdit(s)} className="text-blue-500 hover:bg-blue-50 p-2 rounded" title="編輯"><Icon name="edit" size={18}/></button><button onClick={() => handleDelete(s.id, s.name)} className="text-red-400 hover:bg-red-50 p-2 rounded" title="移除"><Icon name="trash-2" size={18}/></button></div>
-                </div>
+                <div key={s.id} className="flex items-center p-4 border border-gray-100 rounded-xl bg-white hover:border-emerald-200 transition"><img src={s.avatar} className="w-12 h-12 rounded-full bg-gray-200 mr-4 object-cover" /><div className="flex-1"><div className="font-bold text-slate-700">{s.name}</div><div className="flex items-center text-xs text-slate-400 mb-2"><span className="mr-2">{s.title}</span><span className="bg-slate-100 px-2 py-0.5 rounded font-mono text-slate-500">Code: <strong>{s.login_code || '0000'}</strong></span></div><button onClick={() => copyLink(s.id)} className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-1.5 rounded hover:bg-emerald-100 flex items-center w-fit font-bold"><Icon name="link" size={12} className="mr-1"/> 複製專屬連結</button></div><div className="flex space-x-1"><button onClick={() => openEdit(s)} className="text-blue-500 hover:bg-blue-50 p-2 rounded" title="編輯"><Icon name="edit" size={18}/></button><button onClick={() => handleDelete(s.id, s.name)} className="text-red-400 hover:bg-red-50 p-2 rounded" title="移除"><Icon name="trash-2" size={18}/></button></div></div>
             ))}</div>
         </div>
     );
@@ -749,19 +532,40 @@ function SettingsManager({ supabase }) {
 // --- 主程式框架 ---
 function AdminApp() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [loginData, setLoginData] = useState({ username: '', password: '' });
     const [currentView, setCurrentView] = useState('dashboard');
+
+    const handleLogin = () => {
+        const { username, password } = loginData;
+        
+        // ★ 分流邏輯：超級管理員 vs 一般商家
+        if (username === 'super' && password === 'root') {
+            // 設定 Session
+            sessionStorage.setItem('amber_role', 'super_admin');
+            // 跳轉至超級管理後台
+            window.location.href = 'superadmin.html';
+        } else if (username === 'admin' && password === '1234') {
+            setIsLoggedIn(true); // 一般登入，留在本頁
+        } else {
+            alert("帳號或密碼錯誤");
+        }
+    };
 
     if (!isLoggedIn) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
                 <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm border border-slate-200">
                     <div className="flex justify-center mb-6"><div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-3xl">🧘‍♀️</div></div>
-                    <h2 className="text-2xl font-bold text-center text-slate-800 mb-1">Amber Flow</h2>
+                    <h2 className="text-2xl font-bold text-center text-slate-800 mb-1">Easy Book</h2>
                     <p className="text-center text-slate-500 text-sm mb-8">商家管理系統</p>
                     <div className="space-y-4">
-                        <input type="text" value="admin" disabled className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 cursor-not-allowed font-mono text-center" />
-                        <input type="password" value="1234" disabled className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 cursor-not-allowed font-mono text-center" />
-                        <button onClick={() => setIsLoggedIn(true)} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition shadow-lg active:scale-95 flex items-center justify-center mt-4">登入系統 <Icon name="arrow-right" size={16} className="ml-2" /></button>
+                        <input type="text" placeholder="輸入帳號(留意大小寫)" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-center" 
+                            value={loginData.username} onChange={e => setLoginData({...loginData, username: e.target.value})} />
+                        <input type="password" placeholder="輸入密碼" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500 text-center" 
+                            value={loginData.password} onChange={e => setLoginData({...loginData, password: e.target.value})} />
+                        <button onClick={handleLogin} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition shadow-lg active:scale-95 flex items-center justify-center mt-4">
+                            登入系統 <Icon name="arrow-right" size={16} className="ml-2" />
+                        </button>
                     </div>
                 </div>
             </div>
@@ -771,7 +575,7 @@ function AdminApp() {
     return (
         <div className="min-h-screen flex flex-col md:flex-row">
             <aside className="w-full md:w-64 bg-slate-900 text-white flex-shrink-0">
-                <div className="p-6 border-b border-slate-800 hidden md:block"><h1 className="text-xl font-bold flex items-center"><span className="mr-2">🧘‍♀️</span> Amber Flow</h1></div>
+                <div className="p-6 border-b border-slate-800 hidden md:block"><h1 className="text-xl font-bold flex items-center"><span className="mr-2">🧘‍♀️</span> Easy Book</h1></div>
                 <nav className="p-4 space-y-2 flex md:block overflow-x-auto md:overflow-visible">
                     <button onClick={() => setCurrentView('dashboard')} className={`flex items-center p-3 rounded-lg w-full transition ${currentView === 'dashboard' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><Icon name="layout-dashboard" className="mr-3 flex-shrink-0" /> <span className="whitespace-nowrap">儀表板</span></button>
                     <button onClick={() => setCurrentView('schedule')} className={`flex items-center p-3 rounded-lg w-full transition ${currentView === 'schedule' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><Icon name="calendar-clock" className="mr-3 flex-shrink-0" /> <span className="whitespace-nowrap">排班休假</span></button>

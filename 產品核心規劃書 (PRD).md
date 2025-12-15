@@ -1,156 +1,82 @@
-# 個人工作室預約系統 - 產品核心規劃書 (PRD)
+專案概況：EasyBook 預約系統 (SaaS版)
 
-**版本：** v2.0 (MVP 實作完成版 - 含前後台邏輯與 DB 現況)
-**專案代號：** EasyBook / Amber Flow
-**技術架構：** No-Build (HTML + Tailwind CDN + React CDN + Babel Standalone)
-**資料庫：** Supabase
+專案狀態： v2.1 (SaaS MVP 完成 / 運營準備中)
+核心目標： 打造一個專為個人工作室（瑜珈、皮拉提斯、健身）設計的「輕量化、免安裝」預約系統。支援多店家 (Multi-tenant) 訂閱制營運。
 
-## 1. 商業核心與現況 (Status)
+1. 技術架構 (Tech Stack)
 
-| 關鍵面向     | 內容 |
-| ----       | --- |
-| **目標客群** | 個人工作室（以 Amber Flow 瑜珈/皮拉提斯為範本）。 |
-| **目前進度** | **MVP 已完成**。具備完整前台預約、後台管理、排班、營收統計功能。 |
-| **部署方式** | GitHub Pages (靜態託管) + Supabase (雲端資料庫)。 |
-| **檔案結構** | 1. `index.html` (前台完整邏輯)
+架構模式： No-Build (無須編譯打包)，直接在瀏覽器運行。
+前端核心： HTML5 + React (UMD CDN) + Babel Standalone (瀏覽器端編譯 JSX)。
+樣式庫： Tailwind CSS (CDN)。
+後端/資料庫： Supabase (PostgreSQL) + Row Level Security (RLS)。
+圖標庫： Lucide Icons。
+部署環境： GitHub Pages (靜態託管)。
 
-2. `admin.html` (後台骨架)
+2. 檔案結構與功能模組
 
-3. `admin.js` (後台 React 邏輯核心) |
+目前專案由以下 5 個核心檔案組成：
 
-## 2. 系統架構地圖 (Sitemap & Features)
+index.html (產品入口 / Landing Page)
 
-### C 端 - 客戶預約前台 (`index.html`)
+角色：行銷官網。
+功能：介紹產品特色、提供三個角色的 Demo 入口（客人、老闆、員工）。
 
-**核心邏輯：** 漸進式載入 (Progressive Loading)、動態時段計算 (30分鐘一格)。
+booking.html (C端 - 客戶預約前台)
 
-| 區塊 | 功能細節 | 狀態 |
-| --- | --- | --- |
-| **首頁 Header** | 1. **跑馬燈 (Marquee)：** 顯示 `storeInfo.description`，載入後延遲 1 秒滾動。
+角色：給消費者預約課程用。
+核心功能：
+店家資訊與公告 (跑馬燈)。
+三步驟預約：選課 -> 選人 -> 選時段 (動態計算 30 分鐘格)。
+防呆機制：阻擋已額滿或重疊的時段。
+我的訂單：透過「手機 + 姓名」雙重驗證查詢未來行程與取消預約。
+裝置紀錄：寫入訂單時自動記錄 User Agent (device_info)。
+狀態保存：利用 localStorage 記住訪客資訊，顯示未完成訂單紅點。
 
-2. **資訊按鈕 (Info Modal)：** 彈出預約須知 (`storeInfo.terms`)。
+admin.html (B端 - 商家總控後台)
 
-3. **地點顯示：** 連動 Google Maps Icon。 | ✅ 完成 |
-| **預約流程** | 1. **選擇服務：** 自動過濾已刪除 (`deleted_at`) 的項目。
+角色：給工作室老闆管理店務用。
+核心功能：
+登入驗證：比對 stores 資料表，檢查帳號密碼與 valid_until (授權效期)。
+儀表板：今日營收、今日訂單、熱門課程分析 (自動排除失約與排休數據)。
+排班管理：檢視與設定教練休假，支援「連續時段合併顯示」。
+資料管理：課程 (Services)、人員 (Staff)、商店設定 (Settings) 的 CRUD。
+技術備註：為了避開 CORS 問題，JS 邏輯建議內嵌於 HTML 中或使用正確的 Fetch 載入器。
 
-2. **選擇人員：** 自動過濾已離職人員。
+staff.html (B端 - 員工專屬後台)
 
-3. **選擇時間：** 
+角色：給教練/老師看課表用。
+核心功能：
+獨立登入碼 (login_code) 驗證。
+個人儀表板：查看今日/本月個人業績 (排除失約)。
+時間軸課表：格狀顯示每日行程。
+狀態操作：可將訂單標記為「✅ 完成」或「🚫 失約 (No-Show)」。
+superadmin.html + superadmin.js (平台超級後台)
+角色：給系統販售者 (您) 管理所有店家用。
+核心功能：
+店家列表：查看平台所有客戶。
+新增店家：開通新帳號。
+權限管理：修改店家密碼、設定訂閱到期日 (valid_until)。
 
-   - 日期選擇器。
+3. 資料庫架構 (Supabase Schema)
 
-   - **動態時段 (08:00-21:00)**。
+目前採用單一資料庫、多租戶 (store_id) 隔離的設計。
+platform_admins：超級管理員帳號 (username, password)。
+stores：店家資料 (id, name, username, password, valid_until)。
+services：課程項目 (store_id, name, price, duration)。
+staff：員工資料 (store_id, name, login_code, avatar)。
+bookings：訂單核心 (store_id, booking_date, time, status, device_info)。
+Status 狀態流：confirmed (已預約) -> completed (完成) / cancelled (取消) / no_show (失約) / blocked (排休)。
 
-   - **即時狀態檢查**：自動鎖定已預約 (`confirmed`) 或教練排休 (`blocked`) 的時段。 | ✅ 完成 |
-| **資料填寫** | 1. **手機防呆：** 強制 `09` 開頭，限制輸入 8 碼數字。
+4. 下一步開發建議 (Roadmap v3.0)
 
-2. **送出防重：** 按鈕 Loading 狀態防止重複點擊。 | ✅ 完成 |
-| **開發模式** | 右下角懸浮按鈕，快速跳轉至 `admin.html`。 | ✅ 完成 |
+當前版本已具備完整的營運能力，下一階段建議優先處理：
 
-### B 端 - 商家後台 (`admin.html` + `admin.js`)
+效能優化：
 
-**核心邏輯：** React Components 分離、權限控管 (模擬)、軟刪除機制。
-
-| 模組 | 功能細節 | 狀態 |
-| --- | --- | --- |
-| **登入頁** | 模擬登入 (admin/1234)，阻擋未授權訪問。 | ✅ 完成 |
-| **1. 儀表板** | 1. **數據卡片：** 有效訂單數、預估營收 (排除取消/休假單)。
-
-2. **訂單列表：** 即時顯示最新預約。
-
-3. **狀態操作：** 可將訂單標記為「完成」或「取消」。 | ✅ 完成 |
-| **2. 排班管理** | 1. **日曆視圖：** 選擇日期/人員，點擊格子快速切換「休假/空閒」。
-
-2. **批量請假 (Batch Leave)：** 設定開始/結束時間與原因，批次寫入資料庫。
-
-3. **本月甘特圖 (Gantt)：** 底部總覽表，紅字「休」/ 綠點「●」顯示整月狀況。
-
-4. **防呆：** 若時段已有客戶預約，禁止直接設為休假。 | ✅ 完成 |
-| **3. 課程管理** | 1. **CRUD：** 新增、編輯、刪除課程。
-
-2. **軟刪除 (Soft Delete)：** 若刪除時發現有未來訂單，自動轉為軟刪除 (標記 `deleted_at`)。 | ✅ 完成 |
-| **4. 人員管理** | 1. **CRUD：** 新增、編輯、刪除人員。
-
-2. **圖片上傳：** 整合 Supabase Storage (`avatars` bucket)。
-
-3. **同步刪除：** 硬刪除人員時，自動刪除 Storage 中的圖片檔案。 | ✅ 完成 |
-| **5. 商店設定** | 1. **文案管理：** 編輯店名、地址、LINE 連結。
-
-2. **公告管理：** 編輯首頁跑馬燈 (`description`) 與 預約須知 (`terms`)。 | ✅ 完成 |
-
-## 3. 資料庫核心架構 (Supabase Schema)
-
-目前已實作的資料表結構與關鍵欄位。
-
-### 1. `stores` (商家設定)
-
-| 欄位名 | 類型 | 備註 |
-| --- | --- | --- |
-| `id` | UUID | PK |
-| `name` | Text | 店名 |
-| `address` | Text | 地址 (新增) |
-| `line_url` | Text | LINE 連結 (新增) |
-| `description` | Text | 首頁跑馬燈文案 (新增) |
-| `terms` | Text | 預約須知文案 (新增) |
-
-### 2. `services` (服務項目)
-
-| 欄位名 | 類型 | 備註 |
-| --- | --- | --- |
-| `id` | UUID | PK |
-| `name` | Text | 服務名稱 |
-| `price` | Int | 價格 |
-| `duration` | Int | 分鐘數 |
-| `description` | Text | 描述 |
-| `deleted_at` | Timestamp | **軟刪除標記** (若非 NULL 代表已刪除) |
-
-### 3. `staff` (服務人員)
-
-| 欄位名 | 類型 | 備註 |
-| --- | --- | --- |
-| `id` | UUID | PK |
-| `name` | Text | 姓名 |
-| `title` | Text | 職稱 |
-| `avatar` | Text | 頭像 URL (Supabase Storage) |
-| `deleted_at` | Timestamp | **軟刪除標記** |
-
-### 4. `bookings` (預約訂單 & 排休)
-
-| 欄位名 | 類型 | 備註 |
-| --- | --- | --- |
-| `id` | UUID | PK |
-| `booking_date` | Date | 日期 (YYYY-MM-DD) |
-| `booking_time` | Text | 時間 (HH:mm) |
-| `status` | Varchar | **關鍵狀態：**
-
-- `confirmed`: 客戶預約
-
-- `blocked`: 教練排休/鎖定
-
-- `cancelled`: 已取消
-
-- `completed`: 已完成 |
-| `customer_name` | Text | 客戶姓名 (若為 blocked，此欄位存「請假原因」) |
-| `customer_phone` | Text | 客戶電話 (完整號碼含09) |
-
-## 4. 待辦與優化清單 (Backlog for Next Sprint)
-
-### 短期優化 (UX/UI)
-
-1. **載入體驗：** 目前首頁載入依賴 `stores` 查詢回傳，若網路慢會有些微延遲，已加上 Loading Spinner。
-2. **行動版後台：** `admin.html` 目前在手機上可操作，但甘特圖 (Gantt) 寬度較寬，需左右滑動。
-
-### 長期規劃 (Advanced)
-
-1. **真實 LINE Login：** 取代目前的手填資料。
-2. **自動通知機器人：** 需架設 Backend Server (Node.js/Python) 處理 Cron Job。
-3. **多店管理：** 目前程式碼寫死抓取 `stores` 第一筆資料，未來可擴充為多店切換。
-
-## 5. 開發環境備註
-
-- **Repository:** GitHub - `easybook`
-- **Branch:** `main`
-- **Deploy:** GitHub Pages (自動部署)
-- **Editor Config:** * VS Code 需安裝 `Live Server` 預覽。
-    - Git Commit 時若卡住，請檢查終端機是否等待 User Email 輸入。
-    - **推薦使用 Terminal 指令** (`git add .` -> `git commit` -> `git push`) 進行更新。
+目前 DashboardView 是一次撈取所有歷史訂單。需改為「分頁讀取」或「只撈取本月資料 (.gte, .lte)」，避免資料量大時卡頓。
+會員系統 (CRM)：
+建立 members 表格，將 customer_name/phone 轉為實體會員，紀錄消費歷史與剩餘點數。
+金流串接：
+整合綠界/藍新，支援預付訂金，減少 No-Show 率。
+真實身分驗證：
+目前使用資料庫比對字串的方式模擬登入。未來可升級為 Supabase Auth (Email/Password) 以提升安全性。

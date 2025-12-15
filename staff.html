@@ -34,7 +34,6 @@
         const supabaseKey = 'sb_publishable_7RUbenk2kXNDmvuo1XtHbQ_m0RjXuZr'; 
         const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-        // ★ 工具：生成 08:00 - 21:00 時段
         const ALL_TIME_SLOTS = [];
         for (let h = 8; h <= 21; h++) {
             ALL_TIME_SLOTS.push(`${h.toString().padStart(2, '0')}:00`);
@@ -139,7 +138,6 @@
             const handleStatusChange = async (status) => {
                 if (!selectedBooking) return;
                 
-                // 二次確認
                 const confirmMsg = status === 'no_show' 
                     ? "確定要標記此學員為「失約」嗎？\n這將不會計入營收。" 
                     : "確定課程已完成？";
@@ -165,14 +163,12 @@
                             {ALL_TIME_SLOTS.map(time => {
                                 const booking = dailyBookings.find(b => b.booking_time === time && b.status !== 'cancelled');
                                 
-                                // 狀態判斷
                                 const isBlocked = booking?.status === 'blocked';
                                 const isNoShow = booking?.status === 'no_show';
                                 const isCompleted = booking?.status === 'completed';
                                 const isBooked = booking && !isBlocked && !isNoShow;
 
-                                // 卡片樣式邏輯
-                                let cardClass = 'bg-white border-slate-100 text-slate-300'; // 預設空
+                                let cardClass = 'bg-white border-slate-100 text-slate-300';
                                 if (isBlocked) cardClass = 'bg-red-50 border-red-200 text-red-800';
                                 else if (isNoShow) cardClass = 'bg-gray-100 border-gray-300 text-gray-500 opacity-75 grayscale';
                                 else if (isCompleted) cardClass = 'bg-blue-50 border-blue-200 text-blue-800';
@@ -243,7 +239,6 @@
                                                 <div>
                                                     <div className="text-xs text-slate-400 font-bold uppercase">學員姓名</div>
                                                     <div className="text-lg font-bold text-slate-800">{selectedBooking.customer_name}</div>
-                                                    {/* 狀態標籤 */}
                                                     {selectedBooking.status === 'no_show' && <span className="bg-gray-100 text-gray-500 text-xs px-2 py-1 rounded font-bold mt-1 inline-block">已標記失約</span>}
                                                     {selectedBooking.status === 'completed' && <span className="bg-blue-100 text-blue-600 text-xs px-2 py-1 rounded font-bold mt-1 inline-block">課程已完成</span>}
                                                 </div>
@@ -270,7 +265,6 @@
                                     )}
                                 </div>
 
-                                {/* Footer Actions (只在尚未完成或取消時顯示操作) */}
                                 {selectedBooking.status === 'confirmed' && (
                                     <div className="p-4 bg-slate-50 border-t border-slate-100 grid grid-cols-2 gap-3">
                                         <button onClick={() => handleStatusChange('no_show')} className="w-full py-3 bg-white border border-slate-300 text-slate-500 font-bold rounded-xl hover:bg-slate-100 transition flex items-center justify-center">
@@ -281,7 +275,6 @@
                                         </button>
                                     </div>
                                 )}
-                                {/* 如果已完成或已失約，只顯示關閉 */}
                                 {(selectedBooking.status === 'completed' || selectedBooking.status === 'no_show') && (
                                     <div className="p-4 bg-slate-50 border-t border-slate-100">
                                         <button onClick={() => setSelectedBooking(null)} className="w-full py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition">
@@ -301,10 +294,14 @@
             const [staff, setStaff] = useState(null);
             const [inputCode, setInputCode] = useState('');
             const [view, setView] = useState('login'); 
+            const [isLoggingIn, setIsLoggingIn] = useState(false);
             
             const [bookings, setBookings] = useState([]);
             const [services, setServices] = useState([]);
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+            
+            const [storeId, setStoreId] = useState(null);
+            const [storeExpired, setStoreExpired] = useState(false);
 
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
@@ -313,36 +310,70 @@
             }, []);
 
             async function fetchStaff(id) {
-                const { data } = await supabase.from('staff').select('*').eq('id', id).single();
-                if (data) setStaff(data);
+                // ★ 安全修正 1：明確指定欄位，排除 login_code
+                const { data, error } = await supabase
+                    .from('staff')
+                    .select('id, name, title, avatar, store_id, stores(valid_until)')
+                    .eq('id', id)
+                    .single();
+                
+                if (data) {
+                    setStaff(data);
+                    setStoreId(data.store_id);
+                    
+                    if (data.stores && data.stores.valid_until) {
+                        const today = new Date().toISOString().split('T')[0];
+                        if (new Date(data.stores.valid_until) < new Date(today)) {
+                            setStoreExpired(true);
+                        }
+                    }
+                }
             }
 
-            const handleLogin = () => {
-                if (staff && inputCode === (staff.login_code || '0000')) {
-                    setView('dashboard');
-                    fetchData(staff.name);
-                } else {
-                    alert("登入碼錯誤");
+            const handleLogin = async () => {
+                if (storeExpired) {
+                    alert("⚠️ 系統提示：\n所屬店家合約已到期，服務暫時凍結。\n請通知管理員續約。");
+                    return;
+                }
+                if (!staff) return;
+
+                setIsLoggingIn(true);
+                // ★ 安全修正 2：改用 RPC 呼叫後端驗證，不比對明碼
+                try {
+                    const { data: isValid, error } = await supabase.rpc('check_staff_login', {
+                        staff_id: staff.id,
+                        input_code: inputCode
+                    });
+
+                    if (error) {
+                        console.error(error);
+                        alert("系統驗證錯誤，請稍後再試");
+                    } else if (isValid) {
+                        setView('dashboard');
+                        fetchData(staff.name, staff.store_id);
+                    } else {
+                        alert("登入碼錯誤");
+                        setInputCode(''); // 清空輸入
+                    }
+                } catch(e) {
+                    alert("連線錯誤");
+                } finally {
+                    setIsLoggingIn(false);
                 }
             };
 
-            async function fetchData(staffName) {
-                const { data: svcData } = await supabase.from('services').select('name, price');
+            async function fetchData(staffName, currentStoreId) {
+                if (!currentStoreId) return;
+                const { data: svcData } = await supabase.from('services').select('name, price').eq('store_id', currentStoreId);
                 if (svcData) setServices(svcData);
-
-                const { data: bookingData } = await supabase.from('bookings')
-                    .select('*')
-                    .eq('staff_name', staffName)
-                    .neq('status', 'cancelled');
+                const { data: bookingData } = await supabase.from('bookings').select('*').eq('store_id', currentStoreId).eq('staff_name', staffName).neq('status', 'cancelled');
                 if (bookingData) setBookings(bookingData);
             }
 
-            // ★ 更新狀態功能 (傳給 ScheduleView 用)
             async function updateBookingStatus(id, newStatus) {
                 try {
                     const { error } = await supabase.from('bookings').update({ status: newStatus }).eq('id', id);
                     if (error) throw error;
-                    // 更新本地資料
                     setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b));
                 } catch (err) {
                     alert("更新失敗: " + err.message);
@@ -355,19 +386,28 @@
                 return (
                     <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
                         <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm text-center">
-                            <div className="w-20 h-20 rounded-full mx-auto mb-4 p-1 border-2 border-emerald-500">
-                                <img src={staff.avatar} className="w-full h-full rounded-full object-cover" />
+                            <div className="w-20 h-20 rounded-full mx-auto mb-4 p-1 border-2 border-emerald-500 relative">
+                                <img src={staff.avatar} className={`w-full h-full rounded-full object-cover ${storeExpired ? 'grayscale' : ''}`} />
+                                {storeExpired && <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center text-white"><Icon name="lock" /></div>}
                             </div>
                             <h2 className="text-xl font-bold mb-1 text-slate-800">{staff.name}</h2>
-                            <p className="text-xs text-slate-400 mb-6">Welcome back to Amber Flow</p>
                             
-                            <input type="password" value={inputCode} onChange={e => setInputCode(e.target.value)} 
-                                className="w-full p-4 bg-slate-100 border-none rounded-2xl text-center text-2xl tracking-[0.5em] mb-4 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-slate-700" 
-                                maxLength="6" placeholder="••••" />
-                            
-                            <button onClick={handleLogin} className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-900 shadow-lg shadow-slate-200 active:scale-95 transition">
-                                解鎖進入
-                            </button>
+                            {storeExpired ? (
+                                <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold mt-4 mb-2">
+                                    此店家服務合約已到期<br/>無法登入
+                                </div>
+                            ) : (
+                                <>
+                                    <p className="text-xs text-slate-400 mb-6">Welcome back to Amber Flow</p>
+                                    <input type="password" value={inputCode} onChange={e => setInputCode(e.target.value)} 
+                                        className="w-full p-4 bg-slate-100 border-none rounded-2xl text-center text-2xl tracking-[0.5em] mb-4 focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-slate-700" 
+                                        maxLength="6" placeholder="••••" />
+                                    
+                                    <button onClick={handleLogin} disabled={isLoggingIn} className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-900 shadow-lg shadow-slate-200 active:scale-95 transition flex justify-center items-center">
+                                        {isLoggingIn ? "驗證中..." : "解鎖進入"}
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
                 );
@@ -380,12 +420,11 @@
                             <img src={staff.avatar} className="w-8 h-8 rounded-full border border-slate-100 mr-2" />
                             <span className="font-bold text-slate-700">{staff.name}</span>
                         </div>
-                        <button onClick={() => fetchData(staff.name)} className="text-slate-400 hover:text-emerald-600"><Icon name="refresh-ccw" size={18}/></button>
+                        <button onClick={() => fetchData(staff.name, staff.store_id)} className="text-slate-400 hover:text-emerald-600"><Icon name="refresh-ccw" size={18}/></button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto custom-scrollbar">
                         {view === 'dashboard' && <DashboardView bookings={bookings} services={services} />}
-                        {/* 傳入 onUpdateStatus */}
                         {view === 'schedule' && <ScheduleView bookings={bookings} selectedDate={selectedDate} setSelectedDate={setSelectedDate} services={services} onUpdateStatus={updateBookingStatus} />}
                     </div>
 

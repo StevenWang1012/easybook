@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amber Flow - 專為個人工作室打造的預約系統</title>
+    <title>easybook 預約系統 - 專為個人工作室打造的預約系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -39,7 +39,7 @@
                 <a href="#demo" class="bg-emerald-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition transform hover:-translate-y-1">
                     立即體驗 Demo
                 </a>
-                <a href="https://github.com/stevenwang1012/easybook" target="_blank" class="bg-white text-slate-700 border border-slate-200 px-8 py-4 rounded-xl font-bold text-lg hover:bg-slate-50 transition flex items-center justify-center">
+                <a href="https://github.com/yourusername/amber-flow" target="_blank" class="bg-white text-slate-700 border border-slate-200 px-8 py-4 rounded-xl font-bold text-lg hover:bg-slate-50 transition flex items-center justify-center">
                     <i class="fab fa-github mr-2"></i> 查看原始碼
                 </a>
             </div>
@@ -88,61 +88,66 @@
             </div>
 
             <div class="grid md:grid-cols-3 gap-8">
-                <!-- C端 -->
-                <div class="bg-slate-800 rounded-3xl p-1 border border-slate-700">
+                <!-- C端 (滑鼠滑過變藍色) -->
+                <div class="group bg-slate-800 rounded-3xl p-1 border border-slate-700 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-500/20 hover:-translate-y-2 transition-all duration-300">
                     <div class="bg-slate-800 p-8 rounded-[20px] h-full flex flex-col">
                         <div class="mb-6">
-                            <span class="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Customer</span>
+                            <span class="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider group-hover:bg-blue-500 group-hover:text-white transition-colors">Customer</span>
                         </div>
                         <h3 class="text-2xl font-bold mb-2">我是客人</h3>
-                        <p class="text-slate-400 text-sm mb-8 flex-1">
+                        <p class="text-slate-400 text-sm mb-8 flex-1 group-hover:text-slate-300 transition-colors">
                             模擬一般客戶進行課程預約。體驗流暢的選課、選人、選時段流程。
                         </p>
-                        <!-- ★ 修正：連結改為 booking.html -->
-                        <a href="booking.html" target="_blank" class="block w-full bg-blue-600 hover:bg-blue-500 text-white text-center py-3 rounded-xl font-bold transition">
+                        <a href="booking.html" target="_blank" class="block w-full bg-blue-600/20 text-blue-400 border border-blue-500/30 group-hover:bg-blue-600 group-hover:text-white text-center py-3 rounded-xl font-bold transition-all">
                             進入預約頁面 <i class="fas fa-arrow-right ml-2"></i>
                         </a>
                     </div>
                 </div>
 
-                <!-- B端 Admin -->
-                <div class="bg-gradient-to-b from-emerald-500 to-emerald-700 rounded-3xl p-1 shadow-2xl shadow-emerald-900/50 transform md:-translate-y-4">
-                    <div class="bg-slate-900 p-8 rounded-[20px] h-full flex flex-col relative overflow-hidden">
-                        <div class="absolute top-0 right-0 p-4 opacity-10">
+                <!-- B端 Admin (滑鼠滑過變綠色) -->
+                <div class="group bg-slate-800 rounded-3xl p-1 border border-slate-700 hover:border-emerald-500 hover:shadow-2xl hover:shadow-emerald-500/20 hover:-translate-y-2 transition-all duration-300">
+                    <div class="bg-slate-800 p-8 rounded-[20px] h-full flex flex-col relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                             <i class="fas fa-crown text-9xl text-white"></i>
                         </div>
                         <div class="mb-6 relative z-10">
-                            <span class="bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Business Owner</span>
+                            <span class="bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider group-hover:bg-emerald-500 group-hover:text-white transition-colors">Business Owner</span>
                         </div>
                         <h3 class="text-2xl font-bold mb-2 relative z-10">我是老闆</h3>
-                        <p class="text-slate-400 text-sm mb-6 flex-1 relative z-10">
+                        <p class="text-slate-400 text-sm mb-6 flex-1 relative z-10 group-hover:text-slate-300 transition-colors">
                             進入總控後台，管理所有設定。<br>
-                            <span class="text-emerald-400 mt-2 block">
-                                <i class="fas fa-key mr-1"></i> 測試帳號: admin<br>
-                                <i class="fas fa-lock mr-1"></i> 測試密碼: 1234
+                            <span class="text-emerald-400 mt-2 block bg-slate-800/50 p-3 rounded-lg border border-emerald-500/20 backdrop-blur-sm">
+                                <span class="flex items-center justify-between mb-1">
+                                    <span><i class="fas fa-key mr-2 opacity-70"></i> 帳號: <strong class="text-white">admin001@demo.com</strong></span>
+                                    <button onclick="navigator.clipboard.writeText('admin001@demo.com'); alert('已複製帳號！')" class="text-xs bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white px-2 py-1 rounded transition"><i class="fas fa-copy"></i></button>
+                                </span>
+                                <span class="flex items-center justify-between">
+                                    <span><i class="fas fa-lock mr-2 opacity-70"></i> 密碼: <strong class="text-white">Easy@2025</strong></span>
+                                    <button onclick="navigator.clipboard.writeText('Easy@2025'); alert('已複製密碼！')" class="text-xs bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white px-2 py-1 rounded transition"><i class="fas fa-copy"></i></button>
+                                </span>
                             </span>
                         </p>
-                        <a href="admin.html" target="_blank" class="block w-full bg-emerald-600 hover:bg-emerald-500 text-white text-center py-3 rounded-xl font-bold transition relative z-10">
+                        <a href="admin.html" target="_blank" class="block w-full bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 group-hover:bg-emerald-600 group-hover:text-white text-center py-3 rounded-xl font-bold transition-all relative z-10">
                             登入管理後台 <i class="fas fa-arrow-right ml-2"></i>
                         </a>
                     </div>
                 </div>
 
-                <!-- B端 Staff -->
-                <div class="bg-slate-800 rounded-3xl p-1 border border-slate-700">
+                <!-- B端 Staff (滑鼠滑過變紫色) -->
+                <div class="group bg-slate-800 rounded-3xl p-1 border border-slate-700 hover:border-purple-500 hover:shadow-2xl hover:shadow-purple-500/20 hover:-translate-y-2 transition-all duration-300">
                     <div class="bg-slate-800 p-8 rounded-[20px] h-full flex flex-col">
                         <div class="mb-6">
-                            <span class="bg-purple-500/20 text-purple-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Staff</span>
+                            <span class="bg-purple-500/20 text-purple-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider group-hover:bg-purple-500 group-hover:text-white transition-colors">Staff</span>
                         </div>
                         <h3 class="text-2xl font-bold mb-2">我是老師</h3>
-                        <p class="text-slate-400 text-sm mb-6 flex-1">
+                        <p class="text-slate-400 text-sm mb-6 flex-1 group-hover:text-slate-300 transition-colors">
                             模擬員工登入，查看個人課表與業績。<br>
-                            <span class="text-purple-400 mt-2 block">
+                            <span class="text-purple-400 mt-2 block bg-slate-800/50 p-3 rounded-lg border border-purple-500/20 backdrop-blur-sm">
                                 <i class="fas fa-user-tag mr-1"></i> 請先至總後台<br>
-                                查看老師的登入碼
+                                查看老師的登入碼與連結
                             </span>
                         </p>
-                        <a href="staff.html?id=YOUR_TEST_STAFF_ID" onclick="alert('請先在總後台複製老師的專屬連結，因為每位老師的 ID 都不同！'); return false;" class="block w-full bg-purple-600 hover:bg-purple-500 text-white text-center py-3 rounded-xl font-bold transition">
+                        <a href="javascript:void(0)" onclick="alert('請先在「總後台 > 人員管理」複製老師的專屬連結，因為每位老師的 ID 與網址都不同！');" class="block w-full bg-purple-600/20 text-purple-400 border border-purple-500/30 group-hover:bg-purple-600 group-hover:text-white text-center py-3 rounded-xl font-bold transition-all">
                             體驗員工後台 <i class="fas fa-arrow-right ml-2"></i>
                         </a>
                     </div>
@@ -153,7 +158,7 @@
 
     <!-- Footer -->
     <footer class="bg-slate-50 py-10 text-center text-slate-400 text-sm">
-        <p>&copy; 2025 Amber Flow. All rights reserved.</p>
+        <p>&copy; 2025 easybook. All rights reserved.</p>
         <p class="mt-2">Built with <i class="fas fa-heart text-red-400 mx-1"></i> & Supabase</p>
     </footer>
 

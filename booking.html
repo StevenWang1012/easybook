@@ -82,14 +82,12 @@
             const [hasSearched, setHasSearched] = useState(false);
             const [loading, setLoading] = useState(false);
 
-            // 自動讀取 LocalStorage
             useEffect(() => {
                 const savedUser = localStorage.getItem('amber_user');
                 if (savedUser) {
                     const { name: savedName, phone: savedPhone } = JSON.parse(savedUser);
                     setName(savedName);
-                    setPhone(savedPhone.replace(/^09/, '')); // 去除09顯示
-                    // 自動執行查詢
+                    setPhone(savedPhone.replace(/^09/, '')); 
                     doSearch(savedName, savedPhone);
                 }
             }, []);
@@ -112,16 +110,11 @@
 
                     if (error) throw error;
                     setOrders(data || []);
-                    
-                    // 更新外部紅點數字
                     if(onUpdateCount) onUpdateCount((data || []).length);
-
-                    // 儲存到 LocalStorage (方便下次自動登入)
                     localStorage.setItem('amber_user', JSON.stringify({ name: searchName, phone: searchPhone }));
 
                 } catch (err) {
                     console.error(err);
-                    // 如果自動查詢失敗(可能改名了)，就清除 cache
                     localStorage.removeItem('amber_user');
                 } finally {
                     setLoading(false);
@@ -211,9 +204,8 @@
 
         // --- 主程式元件 ---
         function BookingApp() {
-            // 'booking' | 'orders'
             const [activeTab, setActiveTab] = useState('booking'); 
-            const [badgeCount, setBadgeCount] = useState(0); // 紅點數字
+            const [badgeCount, setBadgeCount] = useState(0); 
 
             const [step, setStep] = useState(1);
             const [storeInfo, setStoreInfo] = useState(null);
@@ -248,7 +240,7 @@
                         const { data: stf } = await supabaseClient.from('staff').select('*').order('rating', { ascending: false });
                         if (stf) setStaffList(stf.filter(i => !i.deleted_at));
 
-                        // 2. 檢查紅點 (如果有儲存的用戶)
+                        // 2. 檢查紅點
                         const savedUser = localStorage.getItem('amber_user');
                         if (savedUser) {
                             const { name, phone } = JSON.parse(savedUser);
@@ -335,7 +327,6 @@
                     }]);
                     if (insertError) throw insertError;
                     
-                    // ★ 預約成功後：儲存使用者資訊 + 更新紅點 + 跳轉
                     localStorage.setItem('amber_user', JSON.stringify({ name: customerInfo.name, phone: fullPhoneNumber }));
                     setBadgeCount(prev => prev + 1);
                     setStep(5);
@@ -349,6 +340,33 @@
                         alert("預約錯誤: " + err.message);
                     }
                 } finally { setIsSubmitting(false); }
+            };
+
+            // ★ Google Calendar URL 生成器
+            const generateGoogleCalendarUrl = () => {
+                if (!selectedService || !selectedDate || !selectedTime) return '#';
+                
+                // 1. 計算開始時間 (YYYYMMDDThhmmss)
+                const startStr = selectedDate.replace(/-/g, '') + 'T' + selectedTime.replace(':', '') + '00';
+                
+                // 2. 計算結束時間
+                const [h, m] = selectedTime.split(':').map(Number);
+                const startDateObj = new Date(selectedDate);
+                startDateObj.setHours(h, m + selectedService.duration);
+                // 格式化結束時間
+                const endY = startDateObj.getFullYear();
+                const endM = (startDateObj.getMonth() + 1).toString().padStart(2, '0');
+                const endD = startDateObj.getDate().toString().padStart(2, '0');
+                const endH = startDateObj.getHours().toString().padStart(2, '0');
+                const endMin = startDateObj.getMinutes().toString().padStart(2, '0');
+                const endStr = `${endY}${endM}${endD}T${endH}${endMin}00`;
+
+                // 3. 建立 URL 參數
+                const title = encodeURIComponent(`${storeInfo.name} - ${selectedService.name}`);
+                const details = encodeURIComponent(`指導老師：${selectedStaff.name}\n預約編號：${customerInfo.phone}\n請提早 10 分鐘報到。`);
+                const location = encodeURIComponent(storeInfo.address);
+
+                return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}&location=${location}`;
             };
 
             const handleServiceSelect = (service) => { setSelectedService(service); setStep(2); };
@@ -419,7 +437,12 @@
                                                 <h2 className="text-2xl font-bold text-stone-800 mb-2">預約成功！</h2>
                                                 <p className="text-stone-500 text-sm mb-8">感謝您的預約，期待與您在墊上相見。</p>
                                                 <div className="bg-stone-50 p-6 rounded-2xl text-left mb-6 border border-stone-200"><div className="flex items-center mb-4"><Icon name="calendar" className="mr-3 text-emerald-500"/><div><h3 className="font-bold text-stone-800">{selectedDate}</h3><p className="text-emerald-600 font-bold">{selectedTime}</p></div></div><div className="text-sm text-stone-500 space-y-1 pl-9 border-l-2 border-stone-200 ml-2"><p>課程：{selectedService.name}</p><p>老師：{selectedStaff.name}</p><p>電話：09{customerInfo.phone}</p></div></div>
-                                                <button onClick={() => setActiveTab('orders')} className="block w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition mb-3 mt-6">查看我的訂單</button>
+                                                
+                                                {/* ★ Google Calendar 按鈕 (放在最顯眼位置) */}
+                                                <a href={generateGoogleCalendarUrl()} target="_blank" className="block w-full bg-white border border-slate-200 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 hover:text-emerald-600 transition mb-3 flex items-center justify-center shadow-sm">
+                                                    <Icon name="calendar-plus" size={18} className="mr-2"/> 加入 Google 日曆
+                                                </a>
+
                                                 <a href={storeInfo.lineUrl} target="_blank" className="block w-full bg-[#06c755] text-white py-3 rounded-xl font-bold hover:bg-[#05b34c] transition flex items-center justify-center shadow-lg shadow-green-500/20"><span className="mr-2 text-xl">💬</span> 加入 LINE 接收提醒</a>
                                             </div>
                                         )}
@@ -431,16 +454,15 @@
                             {activeTab === 'orders' && <MyBookingsView onUpdateCount={setBadgeCount} />}
                         </div>
 
-                        {/* ★ 底部導覽列 (Bottom Nav) ★ */}
+                        {/* 底部導覽列 */}
                         <div className="bg-white border-t border-slate-200 p-2 flex justify-around items-center absolute bottom-0 w-full shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-30">
-                            <button onClick={() => setActiveTab('booking')} className={`flex flex-col items-center flex-1 py-2 rounded-xl transition active:scale-95 ${activeTab === 'booking' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}>
+                            <button onClick={() => { setActiveTab('booking'); if(step === 5) setStep(1); }} className={`flex flex-col items-center flex-1 py-2 rounded-xl transition active:scale-95 ${activeTab === 'booking' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}>
                                 <Icon name="calendar-plus" size={24} className="mb-1"/>
                                 <span className="text-[10px] font-bold">預約課程</span>
                             </button>
                             <button onClick={() => setActiveTab('orders')} className={`flex flex-col items-center flex-1 py-2 rounded-xl transition active:scale-95 relative ${activeTab === 'orders' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}>
                                 <div className="relative">
                                     <Icon name="clipboard-list" size={24} className="mb-1"/>
-                                    {/* ★ 紅點通知 Badge */}
                                     {badgeCount > 0 && <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center shadow-sm animate-pulse">{badgeCount}</span>}
                                 </div>
                                 <span className="text-[10px] font-bold">我的訂單</span>
