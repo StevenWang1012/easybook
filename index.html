@@ -54,11 +54,7 @@
             </p>
             <div class="flex flex-col md:flex-row justify-center gap-4">
                 <a href="#demo" class="px-8 py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg shadow-xl shadow-emerald-200 hover:bg-emerald-700 transition transform hover:-translate-y-1">免費體驗</a>
-<<<<<<< HEAD
                 <a href="booking.html?id=a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" target="_blank" class="px-8 py-4 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold text-lg hover:bg-slate-50 transition flex items-center justify-center">
-=======
-                <a href="booking.html?id=0ab566a7-a7d2-4e12-a52b-d9b4f99fab7a" target="_blank" class="px-8 py-4 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold text-lg hover:bg-slate-50 transition flex items-center justify-center">
->>>>>>> f82c989e14d4b35d36ed77f590c43b0797df70af
                     <i data-lucide="smartphone" class="w-5 h-5 mr-2"></i> 模擬客戶預約
                 </a>
             </div>
@@ -104,58 +100,56 @@
                 <p class="text-slate-400">點擊下方卡片，立即以不同身分體驗系統流程</p>
             </div>
             
-            <div class="grid md:grid-cols-3 gap-6">
+            <div class="grid md:grid-cols-3 gap-6 items-stretch">
                 
                 <!-- 1. 客戶預約 (Purple) -->
-<<<<<<< HEAD
-                <a href="booking.html?id=a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" target="_blank" class="block bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-purple relative overflow-hidden group">
-=======
-                <a href="booking.html?id=0ab566a7-a7d2-4e12-a52b-d9b4f99fab7a" class="block bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-purple relative overflow-hidden group">
->>>>>>> f82c989e14d4b35d36ed77f590c43b0797df70af
+                <a href="booking.html?id=a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" target="_blank" class="flex flex-col h-full bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-purple relative overflow-hidden group">
                     <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition"><i data-lucide="smartphone" class="w-24 h-24"></i></div>
                     <div class="flex items-center mb-4">
                         <span class="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-sm font-bold mr-3 shadow-lg shadow-purple-500/30">客</span>
                         <h3 class="font-bold text-xl">客戶預約</h3>
                     </div>
-                    <p class="text-sm text-slate-400 mb-6 min-h-[40px]">消費者專用。瀏覽課程、選擇時段、完成預約。支援 LINE 快速登入。</p>
-                    <div class="inline-block px-4 py-2 bg-purple-500/20 text-purple-300 rounded-lg text-xs font-mono border border-purple-500/30">
-                        無需帳號，直接體驗
+                    <p class="text-sm text-slate-400 mb-6 flex-1">消費者專用。瀏覽課程、選擇時段、完成預約。支援 LINE 快速登入。</p>
+                    <div class="mt-auto">
+                        <div class="inline-block px-4 py-2 bg-purple-500/20 text-purple-300 rounded-lg text-xs font-mono border border-purple-500/30 w-full text-center">
+                            無需帳號，直接體驗
+                        </div>
                     </div>
                 </a>
 
                 <!-- 2. 商家後台 (Emerald) -->
-                <!-- 使用 onclick 替代 href 以支援內部按鈕的 stopPropagation -->
-                <div onclick="window.open('admin.html', '_blank')" class="cursor-pointer block bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-emerald relative overflow-hidden group">
+                <div onclick="window.open('admin.html', '_blank')" class="cursor-pointer flex flex-col h-full bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-emerald relative overflow-hidden group">
                     <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition"><i data-lucide="store" class="w-24 h-24"></i></div>
                     <div class="flex items-center mb-4">
                         <span class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-sm font-bold mr-3 shadow-lg shadow-emerald-500/30">店</span>
                         <h3 class="font-bold text-xl">商家後台</h3>
                     </div>
-                    <p class="text-sm text-slate-400 mb-6 min-h-[40px]">店長專用。設定課程、管理人員、查看報表、處理全店事務。</p>
-                    <div class="space-y-2">
-                        <div class="flex items-center justify-between px-3 py-2 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs font-mono border border-emerald-500/30 w-full group/btn">
-                            <span>帳號: admin001@demo.com</span>
-                            <button onclick="event.stopPropagation(); copyText('admin001@demo.com')" class="text-emerald-500 hover:text-white transition p-1 rounded hover:bg-emerald-500/50" title="複製"><i data-lucide="copy" class="w-3 h-3"></i></button>
+                    <p class="text-sm text-slate-400 mb-6 flex-1">店長專用。設定課程、管理人員、查看報表、處理全店事務。</p>
+                    <div class="space-y-2 mt-auto">
+                        <div class="flex items-center justify-between px-3 py-2 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs font-mono border border-emerald-500/30 w-full group/btn hover:bg-emerald-500/30 transition">
+                            <span class="truncate">帳號: admin001@demo.com</span>
+                            <button onclick="event.stopPropagation(); copyText('admin001@demo.com')" class="text-emerald-400 hover:text-white transition p-1 rounded hover:bg-emerald-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
                         </div>
-                        <div class="flex items-center justify-between px-3 py-2 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs font-mono border border-emerald-500/30 w-full group/btn">
+                        <div class="flex items-center justify-between px-3 py-2 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs font-mono border border-emerald-500/30 w-full group/btn hover:bg-emerald-500/30 transition">
                             <span>密碼: Easy@2025</span>
-                            <button onclick="event.stopPropagation(); copyText('Easy@2025')" class="text-emerald-500 hover:text-white transition p-1 rounded hover:bg-emerald-500/50" title="複製"><i data-lucide="copy" class="w-3 h-3"></i></button>
+                            <button onclick="event.stopPropagation(); copyText('Easy@2025')" class="text-emerald-400 hover:text-white transition p-1 rounded hover:bg-emerald-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
                         </div>
                     </div>
                 </div>
 
                 <!-- 3. 老師專區 (Blue) -->
-                <!-- 使用 onclick 替代 href -->
-                <div onclick="window.open('staff.html?id=d4e1c7bf-720c-4e3d-a2a2-b0302a0dfddc', '_blank')" class="cursor-pointer block bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-blue relative overflow-hidden group">
+                <div onclick="window.open('staff.html?id=d4e1c7bf-720c-4e3d-a2a2-b0302a0dfddc', '_blank')" class="cursor-pointer flex flex-col h-full bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-blue relative overflow-hidden group">
                     <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition"><i data-lucide="user-check" class="w-24 h-24"></i></div>
                     <div class="flex items-center mb-4">
                         <span class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-sm font-bold mr-3 shadow-lg shadow-blue-500/30">師</span>
                         <h3 class="font-bold text-xl">老師專區</h3>
                     </div>
-                    <p class="text-sm text-slate-400 mb-6 min-h-[40px]">員工/教練專用。查看個人班表、核銷訂單、申請排休、推廣個人連結。</p>
-                    <div class="flex items-center justify-between px-3 py-2 bg-blue-500/20 text-blue-300 rounded-lg text-xs font-mono border border-blue-500/30 w-full">
-                        <span>登入碼: 8888</span>
-                        <button onclick="event.stopPropagation(); copyText('8888')" class="text-blue-500 hover:text-white transition p-1 rounded hover:bg-blue-500/50" title="複製"><i data-lucide="copy" class="w-3 h-3"></i></button>
+                    <p class="text-sm text-slate-400 mb-6 flex-1">員工/教練專用。查看個人班表、核銷訂單、申請排休、推廣個人連結。</p>
+                    <div class="mt-auto">
+                        <div class="flex items-center justify-between px-3 py-2 bg-blue-500/20 text-blue-300 rounded-lg text-xs font-mono border border-blue-500/30 w-full hover:bg-blue-500/30 transition">
+                            <span>登入碼: 8888</span>
+                            <button onclick="event.stopPropagation(); copyText('8888')" class="text-blue-400 hover:text-white transition p-1 rounded hover:bg-blue-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                        </div>
                     </div>
                 </div>
 
@@ -196,5 +190,4 @@
         }
     </script>
 </body>
-
 </html>
