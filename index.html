@@ -12,7 +12,6 @@
         .gradient-text { background: linear-gradient(135deg, #059669 0%, #0d9488 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .hero-bg { background: linear-gradient(to bottom right, #ecfdf5, #f0f9ff); }
         
-        /* 光暈特效 */
         .glow-card { transition: all 0.3s ease; }
         .glow-card:hover { transform: translateY(-8px); }
         .glow-purple:hover { box-shadow: 0 10px 40px -10px rgba(168, 85, 247, 0.4); border-color: rgba(168, 85, 247, 0.5); }
@@ -43,7 +42,8 @@
     <!-- Hero Section -->
     <header class="hero-bg pt-32 pb-20 px-4 text-center">
         <div class="max-w-4xl mx-auto">
-            <div class="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold mb-6 border border-emerald-200">✨ V3.0 全新升級：支援多門店與員工排休</div>
+            <!-- ★ 加入 animate-bounce 讓它上下跳動 -->
+            <div class="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold mb-6 border border-emerald-200 animate-bounce">✨ V3.0 全新升級：支援多門店與員工排休</div>
             <h1 class="text-4xl md:text-6xl font-black mb-6 leading-tight text-slate-900">
                 讓預約管理<br/>
                 <span class="gradient-text">像呼吸一樣簡單</span>
@@ -54,7 +54,8 @@
             </p>
             <div class="flex flex-col md:flex-row justify-center gap-4">
                 <a href="#demo" class="px-8 py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg shadow-xl shadow-emerald-200 hover:bg-emerald-700 transition transform hover:-translate-y-1">免費體驗</a>
-                <a href="booking.html?id=a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" target="_blank" class="px-8 py-4 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold text-lg hover:bg-slate-50 transition flex items-center justify-center">
+                <!-- 動態 ID: hero-booking-link -->
+                <a id="hero-booking-link" href="#" target="_blank" class="px-8 py-4 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold text-lg hover:bg-slate-50 transition flex items-center justify-center">
                     <i data-lucide="smartphone" class="w-5 h-5 mr-2"></i> 模擬客戶預約
                 </a>
             </div>
@@ -103,7 +104,8 @@
             <div class="grid md:grid-cols-3 gap-6 items-stretch">
                 
                 <!-- 1. 客戶預約 (Purple) -->
-                <a href="booking.html?id=a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" target="_blank" class="flex flex-col h-full bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-purple relative overflow-hidden group">
+                <!-- 動態 ID: demo-booking-link -->
+                <a id="demo-booking-link" href="#" target="_blank" class="flex flex-col h-full bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-purple relative overflow-hidden group">
                     <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition"><i data-lucide="smartphone" class="w-24 h-24"></i></div>
                     <div class="flex items-center mb-4">
                         <span class="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-sm font-bold mr-3 shadow-lg shadow-purple-500/30">客</span>
@@ -127,18 +129,19 @@
                     <p class="text-sm text-slate-400 mb-6 flex-1">店長專用。設定課程、管理人員、查看報表、處理全店事務。</p>
                     <div class="space-y-2 mt-auto">
                         <div class="flex items-center justify-between px-3 py-2 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs font-mono border border-emerald-500/30 w-full group/btn hover:bg-emerald-500/30 transition">
-                            <span class="truncate">帳號: admin001@demo.com</span>
-                            <button onclick="event.stopPropagation(); copyText('admin001@demo.com')" class="text-emerald-400 hover:text-white transition p-1 rounded hover:bg-emerald-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                            <span id="admin-email-display" class="truncate">Loading...</span>
+                            <button id="admin-email-btn" class="text-emerald-400 hover:text-white transition p-1 rounded hover:bg-emerald-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
                         </div>
                         <div class="flex items-center justify-between px-3 py-2 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs font-mono border border-emerald-500/30 w-full group/btn hover:bg-emerald-500/30 transition">
-                            <span>密碼: Easy@2025</span>
-                            <button onclick="event.stopPropagation(); copyText('Easy@2025')" class="text-emerald-400 hover:text-white transition p-1 rounded hover:bg-emerald-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                            <span id="admin-pwd-display">Loading...</span>
+                            <button id="admin-pwd-btn" class="text-emerald-400 hover:text-white transition p-1 rounded hover:bg-emerald-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
                         </div>
                     </div>
                 </div>
 
                 <!-- 3. 老師專區 (Blue) -->
-                <div onclick="window.open('staff.html?id=d4e1c7bf-720c-4e3d-a2a2-b0302a0dfddc', '_blank')" class="cursor-pointer flex flex-col h-full bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-blue relative overflow-hidden group">
+                <!-- 動態 onclick: demo-staff-card -->
+                <div id="demo-staff-card" class="cursor-pointer flex flex-col h-full bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-blue relative overflow-hidden group">
                     <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition"><i data-lucide="user-check" class="w-24 h-24"></i></div>
                     <div class="flex items-center mb-4">
                         <span class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-sm font-bold mr-3 shadow-lg shadow-blue-500/30">師</span>
@@ -147,8 +150,8 @@
                     <p class="text-sm text-slate-400 mb-6 flex-1">員工/教練專用。查看個人班表、核銷訂單、申請排休、推廣個人連結。</p>
                     <div class="mt-auto">
                         <div class="flex items-center justify-between px-3 py-2 bg-blue-500/20 text-blue-300 rounded-lg text-xs font-mono border border-blue-500/30 w-full hover:bg-blue-500/30 transition">
-                            <span>登入碼: 0000</span>
-                            <button onclick="event.stopPropagation(); copyText('0000')" class="text-blue-400 hover:text-white transition p-1 rounded hover:bg-blue-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                            <span id="staff-code-display">Loading...</span>
+                            <button id="staff-code-btn" class="text-blue-400 hover:text-white transition p-1 rounded hover:bg-blue-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
                         </div>
                     </div>
                 </div>
@@ -174,19 +177,61 @@
     </footer>
 
     <script>
-        // Init Icons
-        lucide.createIcons();
+        // ★★★ 集中配置區 (Configuration Center) ★★★
+        // 任何測試帳號、ID、連結變更，只需要修改這裡
+        const DEMO_CONFIG = {
+            storeId: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+            staffId: "d4e1c7bf-720c-4e3d-a2a2-b0302a0dfddc",
+            adminEmail: "admin001@demo.com",
+            adminPwd: "Easy@2025",
+            staffCode: "0000"  // ★ Updated to 0000
+        };
 
-        // Copy Function
-        function copyText(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                // 簡單提示，不使用 alert 阻斷體驗
-                const originalTitle = document.title;
-                document.title = "已複製！";
-                setTimeout(() => document.title = originalTitle, 1000);
-            }).catch(err => {
-                console.error('複製失敗', err);
-            });
+        // Init App
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. 設定客戶預約連結
+            const bookingUrl = `booking.html?id=${DEMO_CONFIG.storeId}`;
+            document.getElementById('hero-booking-link').href = bookingUrl;
+            document.getElementById('demo-booking-link').href = bookingUrl;
+
+            // 2. 設定老師專區連結
+            const staffUrl = `staff.html?id=${DEMO_CONFIG.staffId}`;
+            document.getElementById('demo-staff-card').onclick = () => window.open(staffUrl, '_blank');
+
+            // 3. 填入 Admin 資訊與設定複製
+            document.getElementById('admin-email-display').textContent = `帳號: ${DEMO_CONFIG.adminEmail}`;
+            document.getElementById('admin-pwd-display').textContent = `密碼: ${DEMO_CONFIG.adminPwd}`;
+            
+            setupCopyBtn('admin-email-btn', DEMO_CONFIG.adminEmail);
+            setupCopyBtn('admin-pwd-btn', DEMO_CONFIG.adminPwd);
+
+            // 4. 填入 Staff 資訊與設定複製
+            document.getElementById('staff-code-display').textContent = `登入碼: ${DEMO_CONFIG.staffCode}`;
+            setupCopyBtn('staff-code-btn', DEMO_CONFIG.staffCode);
+
+            // 5. Init Icons
+            lucide.createIcons();
+        });
+
+        // 通用複製功能
+        function setupCopyBtn(btnId, text) {
+            const btn = document.getElementById(btnId);
+            if(!btn) return;
+            
+            btn.onclick = (e) => {
+                e.stopPropagation(); // 防止觸發卡片跳轉
+                navigator.clipboard.writeText(text).then(() => {
+                    const originalHTML = btn.innerHTML;
+                    btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i>'; // 暫時變勾勾
+                    lucide.createIcons();
+                    
+                    // 恢復
+                    setTimeout(() => {
+                        btn.innerHTML = originalHTML;
+                        lucide.createIcons();
+                    }, 2000);
+                });
+            };
         }
     </script>
 </body>

@@ -114,10 +114,25 @@
                 }
             }
 
-            // 合併顯示邏輯 (用於 Dashboard 列表)
+            // 狀態顯示邏輯優化
+            const getStatusBadge = (status) => {
+                switch(status) {
+                    case 'confirmed': return <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded text-xs">預約成功</span>;
+                    case 'cancelled': return <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded text-xs">預約取消</span>;
+                    case 'completed': return <span className="text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded text-xs">完課</span>;
+                    default: return <span className="text-slate-400 bg-slate-100 px-2 py-1 rounded text-xs">{status}</span>;
+                }
+            };
+
             const mergeLeaveSlots = (leaves) => {
                 if (leaves.length === 0) return [];
-                const sorted = [...leaves].sort((a, b) => a.booking_time.localeCompare(b.booking_time));
+                // ★ Fix: 排序邏輯修正 (先姓名，再時間)，確保同一人的時段能排在一起被合併
+                const sorted = [...leaves].sort((a, b) => {
+                    if (a.staff_name === b.staff_name) {
+                        return a.booking_time.localeCompare(b.booking_time);
+                    }
+                    return a.staff_name.localeCompare(b.staff_name);
+                });
                 const merged = [];
                 let currentGroup = null;
                 sorted.forEach((leave) => {
@@ -158,7 +173,6 @@
                 const tmrStr = tmr.toISOString().split('T')[0];
 
                 let displayList = bookings.filter(b => {
-                    if(b.status === 'cancelled') return false;
                     if(timeFilter === 'today') return b.booking_date === today;
                     if(timeFilter === 'tomorrow') return b.booking_date === tmrStr;
                     return true;
@@ -213,7 +227,7 @@
                                                         <td className="p-3"><div className="font-bold">{b.booking_time}</div><div className="text-xs text-slate-400">{b.booking_date}</div></td>
                                                         <td className="p-3"><div className="font-bold">{b.customer_name}</div><div className="text-xs text-slate-400">{b.customer_phone}</div></td>
                                                         <td className="p-3"><span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-xs font-bold">{b.service_name}</span><div className="text-xs text-slate-400 mt-1">{b.staff_name}</div></td>
-                                                        <td className="p-3">{b.status === 'confirmed' ? <span className="text-emerald-600 font-bold">● 確認</span> : <span className="text-slate-400">{b.status}</span>}</td>
+                                                        <td className="p-3">{getStatusBadge(b.status)}</td>
                                                         <td className="p-3 text-right">{b.status === 'confirmed' && <button onClick={() => updateStatus(b.id, 'cancelled')} className="text-red-400 hover:text-red-600"><Icon name="x-circle" size={18}/></button>}</td>
                                                     </tr>))}
                                             </tbody>
@@ -221,7 +235,7 @@
                                     </div>
                                     <div className="md:hidden space-y-3">
                                         {stats.bookingList.map(b => (
-                                            <MobileCard key={b.id} title={`${b.booking_time} ${b.customer_name}`} subtitle={b.booking_date} status={b.status === 'confirmed' ? <span className="text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-1 rounded">● 確認</span> : <span className="text-slate-400 text-xs bg-slate-100 px-2 py-1 rounded">{b.status}</span>} actions={b.status === 'confirmed' && <button onClick={() => updateStatus(b.id, 'cancelled')} className="text-red-500 font-bold text-xs px-3 py-2 bg-red-50 rounded-lg w-full">取消預約</button>}>
+                                            <MobileCard key={b.id} title={`${b.booking_time} ${b.customer_name}`} subtitle={b.booking_date} status={getStatusBadge(b.status)} actions={b.status === 'confirmed' && <button onClick={() => updateStatus(b.id, 'cancelled')} className="text-red-500 font-bold text-xs px-3 py-2 bg-red-50 rounded-lg w-full">取消預約</button>}>
                                                 <div className="flex justify-between"><span>項目:</span> <span className="font-bold">{b.service_name}</span></div>
                                                 <div className="flex justify-between"><span>老師:</span> <span>{b.staff_name}</span></div>
                                             </MobileCard>
@@ -246,21 +260,18 @@
             );
         }
 
-        // --- 2. 排班管理 (Schedule) [★ UX 升級版] ---
+        // --- 2. 排班管理 (Schedule) ---
         function ScheduleManager({ supabase, storeId }) {
             const [staffList, setStaffList] = useState([]);
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
             const [selectedStaff, setSelectedStaff] = useState(null);
             const [scheduleData, setScheduleData] = useState([]);
             const [showModal, setShowModal] = useState(false);
-            
-            // UX 升級：新增時段選擇狀態
             const [leaveType, setLeaveType] = useState('staff');
-            const [timeMode, setTimeMode] = useState('all'); // all | custom
+            const [timeMode, setTimeMode] = useState('all');
             const [startTime, setStartTime] = useState('09:00');
             const [endTime, setEndTime] = useState('18:00');
             const [reason, setReason] = useState('公休');
-            
             const [timeSlots, setTimeSlots] = useState([]);
 
             useEffect(() => { fetchStaff(); fetchStoreInfo(); }, [storeId]);
@@ -270,7 +281,6 @@
                 const { data } = await supabase.from('stores').select('open_time, close_time').eq('id', storeId).single();
                 if (data) {
                     setTimeSlots(generateTimeSlots(data.open_time, data.close_time));
-                    // 預設時間
                     setStartTime(data.open_time);
                     setEndTime(data.close_time);
                 }
@@ -293,20 +303,16 @@
                 setScheduleData(data || []);
             }
 
-            // ★ 修正：衝突檢測邏輯
             const handleBulkLeave = async () => {
                 const targets = leaveType === 'store' ? staffList : [selectedStaff];
                 if (targets.length === 0 || !targets[0]) return alert("請先新增員工");
 
                 const items = [];
-                // 計算時段區間
                 let targetSlots = timeSlots;
                 if (timeMode === 'custom') {
-                    // 簡單字串比對，假設時間格式固定 HH:MM
                     targetSlots = timeSlots.filter(s => s.time >= startTime && s.time < endTime); 
                 }
 
-                // 1. 產生所有欲請假的項目
                 targets.forEach(staff => {
                     targetSlots.forEach(slot => {
                         let bDate = selectedDate;
@@ -317,8 +323,6 @@
 
                 if(items.length === 0) return alert("無有效時段");
 
-                // 2. 衝突檢測：查詢資料庫是否有 'confirmed' 的訂單
-                // 為了效能，我們查該日期的所有 confirmed 訂單，再用 JS 比對
                 const checkDates = [...new Set(items.map(i => i.booking_date))];
                 const { data: conflicts } = await supabase.from('bookings').select('staff_name, booking_date, booking_time, customer_name')
                     .eq('store_id', storeId)
@@ -336,14 +340,12 @@
                     }
                 }
 
-                // 3. 通過檢測，執行確認與寫入
                 if (!confirm(`即將新增 ${items.length} 筆排休，確定嗎？`)) return;
 
                 const { error } = await supabase.rpc('owner_batch_block_time', { p_store_id: storeId, p_payload: items });
                 if (error) alert("失敗: " + error.message); else { alert("✅ 排休設定完成！"); setShowModal(false); fetchSchedule(); }
             };
 
-            // ★ 批量刪除邏輯
             async function batchCancelLeave(ids) {
                 if(!confirm(`確定移除這 ${ids.length} 個時段？`)) return;
                 let errorCount = 0;
@@ -356,15 +358,20 @@
                 if(errorCount > 0) alert("部分刪除失敗"); else fetchSchedule();
             }
 
-            // 合併顯示邏輯 (Reuse)
             const mergeLeaveSlots = (leaves) => {
                 if (leaves.length === 0) return [];
-                const sorted = [...leaves].sort((a, b) => a.booking_time.localeCompare(b.booking_time));
+                // ★ Fix: 排序邏輯修正 (先姓名，再時間)，確保同一人的時段能排在一起被合併
+                const sorted = [...leaves].sort((a, b) => {
+                    if (a.staff_name === b.staff_name) {
+                        return a.booking_time.localeCompare(b.booking_time);
+                    }
+                    return a.staff_name.localeCompare(b.staff_name);
+                });
                 const merged = [];
                 let currentGroup = null;
                 sorted.forEach((leave) => {
                     if (currentGroup && currentGroup.staff_name === leave.staff_name && currentGroup.booking_date === leave.booking_date && currentGroup.reason === leave.customer_name) {
-                        currentGroup.endTime = leave.booking_time; // 這裡可以優化成 +30min
+                        currentGroup.endTime = leave.booking_time; 
                         currentGroup.ids.push(leave.id);
                     } else {
                         if (currentGroup) merged.push(currentGroup);
@@ -381,7 +388,38 @@
             };
 
             const currentDayLeavesRaw = scheduleData.filter(s => s.booking_date === selectedDate);
-            const currentDayLeavesMerged = mergeLeaveSlots(currentDayLeavesRaw);
+            
+            // 全店公休合併邏輯
+            const groupStoreLeaves = (leaves) => {
+                const mergedByStaff = mergeLeaveSlots(leaves);
+                const timeMap = {};
+                mergedByStaff.forEach(g => {
+                    const key = `${g.startTime}-${g.endTime}-${g.reason}`;
+                    if(!timeMap[key]) timeMap[key] = [];
+                    timeMap[key].push(g);
+                });
+
+                const finalDisplay = [];
+                Object.values(timeMap).forEach(group => {
+                    if (staffList.length > 0 && group.length >= staffList.length) {
+                        const allIds = group.flatMap(g => g.ids);
+                        finalDisplay.push({
+                            id: group[0].id,
+                            ids: allIds,
+                            staff_name: "🏢 全店公休",
+                            startTime: group[0].startTime,
+                            endTime: group[0].endTime,
+                            reason: group[0].reason
+                        });
+                    } else {
+                        group.forEach(g => finalDisplay.push(g));
+                    }
+                });
+                
+                return finalDisplay.sort((a,b) => a.startTime.localeCompare(b.startTime));
+            };
+
+            const currentDayLeavesMerged = groupStoreLeaves(currentDayLeavesRaw);
 
             const renderCalendar = () => {
                 const year = parseInt(selectedDate.split('-')[0]);
@@ -396,13 +434,11 @@
                     const dayLeaves = scheduleData.filter(x => x.booking_date === dateStr);
                     const totalCapacity = staffList.length * timeSlots.length;
                     
-                    // UX: 全店公休判定 (超過 80% 產能被鎖)
                     const isFullStoreLeave = totalCapacity > 0 && dayLeaves.length >= (totalCapacity * 0.8);
                     
-                    // UX: 人員排休統計
                     const staffLeaveCounts = {};
                     dayLeaves.forEach(l => { staffLeaveCounts[l.staff_name] = (staffLeaveCounts[l.staff_name] || 0) + 1; });
-                    const offStaffNames = Object.keys(staffLeaveCounts).filter(name => staffLeaveCounts[name] > 4); // 休超過2小時才算休
+                    const offStaffNames = Object.keys(staffLeaveCounts).filter(name => staffLeaveCounts[name] > 4); 
 
                     days.push(
                         <div key={d} onClick={() => { setSelectedDate(dateStr); setShowModal(true); }} className={`h-20 md:h-28 border p-1 cursor-pointer hover:bg-slate-50 relative transition hover:shadow-md ${selectedDate === dateStr ? 'ring-2 ring-emerald-500' : ''} ${isFullStoreLeave ? 'bg-red-50' : 'bg-white'}`}>
@@ -449,17 +485,14 @@
                                 </div>
                                 
                                 <div className="p-6 overflow-y-auto custom-scrollbar">
-                                    {/* 1. 新增排休 (UI/UX 升級) */}
                                     <h4 className="text-sm font-bold text-slate-500 mb-3 uppercase tracking-wider">新增排休</h4>
                                     <div className="space-y-4 mb-8 bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                                        {/* 對象選擇 */}
                                         <div className="flex bg-white p-1 rounded-xl border border-slate-200">
                                             <button onClick={() => setLeaveType('store')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${leaveType==='store' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>🏢 全店</button>
                                             <button onClick={() => setLeaveType('staff')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${leaveType==='staff' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>👤 個人</button>
                                         </div>
                                         {leaveType === 'staff' && <select className="w-full p-3 border rounded-xl bg-white" value={selectedStaff?.id} onChange={e => setSelectedStaff(staffList.find(s => s.id === e.target.value))}>{staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
                                         
-                                        {/* 時段選擇 (核心改進) */}
                                         <div className="border-t border-slate-200 pt-3">
                                             <div className="flex gap-4 mb-2">
                                                 <label className="flex items-center text-sm font-bold cursor-pointer"><input type="radio" name="timeMode" checked={timeMode==='all'} onChange={()=>setTimeMode('all')} className="mr-2 accent-emerald-600"/> 全天休假</label>
@@ -478,7 +511,6 @@
                                         <button onClick={handleBulkLeave} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition active:scale-95">確認新增</button>
                                     </div>
 
-                                    {/* 2. 已排休列表 (合併顯示) */}
                                     <h4 className="text-sm font-bold text-slate-500 mb-3 uppercase tracking-wider flex justify-between items-center">
                                         <span>當日已排休</span>
                                         <span className="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full">{currentDayLeavesMerged.length}</span>
@@ -669,7 +701,7 @@
             );
         }
 
-        // --- 4. 課程管理 (Services) ---
+        // --- 4. 課程管理 (Services) [★ Fix: 欄位順序] ---
         function ServiceManager({ supabase, storeId }) {
             const [services, setServices] = useState([]);
             const [isEditing, setIsEditing] = useState(false);
@@ -716,6 +748,7 @@
                             <label className="block text-xs font-bold text-slate-500 mb-1">課程名稱</label>
                             <input className="w-full p-3 border rounded-xl" placeholder="例如：基礎瑜珈" value={form.name || ''} onChange={e=>setForm({...form, name:e.target.value})}/>
                         </div>
+                        {/* ★ Fix: 描述欄位移到名稱下方 */}
                         <div>
                             <label className="block text-xs font-bold text-slate-500 mb-1">課程描述</label>
                             <textarea className="w-full p-3 border rounded-xl" rows="2" placeholder="簡單介紹課程內容..." value={form.description || ''} onChange={e=>setForm({...form, description:e.target.value})}></textarea>
@@ -736,7 +769,7 @@
             );
         }
 
-        // --- 5. 人員管理 (Staff) ---
+        // --- 5. 人員管理 (Staff) [★ Fix: 補回連結按鈕] ---
         function StaffManager({ supabase, storeId }) {
             const [staff, setStaff] = useState([]);
             const [isEditing, setIsEditing] = useState(false);
@@ -789,8 +822,10 @@
                 }
             }
 
+            // ★ Fix: 補回複製連結功能
             const copyStaffLink = (id) => {
-                const link = new URL(`staff.html?id=${id}`, window.location.href).href;
+                // 使用 staff_id 參數
+                const link = new URL(`staff.html?staff_id=${id}`, window.location.href).href;
                 navigator.clipboard.writeText(link);
                 alert("已複製人員專屬連結！\n" + link);
             };
@@ -830,6 +865,7 @@
                                 <div className="text-xs text-slate-500">{s.title} | Code: <span className="font-mono bg-slate-100 px-1 rounded">{s.login_code}</span></div>
                             </div>
                             <div className="flex gap-2">
+                                {/* ★ Fix: 補回複製連結按鈕 */}
                                 <button onClick={()=>copyStaffLink(s.id)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg" title="複製連結"><Icon name="link" size={18}/></button>
                                 <button onClick={()=>{setForm(s); setIsEditing(true)}} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Icon name="edit" size={18}/></button>
                                 <button onClick={()=>handleDelete(s.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Icon name="trash-2" size={18}/></button>
@@ -844,8 +880,12 @@
         function SettingsManager({ supabase, storeId }) {
             const [store, setStore] = useState({});
             const [link, setLink] = useState('');
-            useEffect(() => { supabase.from('stores').select('*').eq('id', storeId).single().then(({data}) => setStore(data || {})); setLink(new URL(`booking.html?id=${storeId}`, window.location.href).href); }, [storeId]);
+            useEffect(() => { 
+                supabase.from('stores').select('*').eq('id', storeId).single().then(({data}) => setStore(data || {})); 
+                setLink(new URL(`booking.html?store_id=${storeId}`, window.location.href).href); 
+            }, [storeId]);
             const handleSave = async () => { await supabase.from('stores').update(store).eq('id', storeId); alert("✅ 設定已儲存"); };
+            const copyLink = () => { navigator.clipboard.writeText(link); alert("已複製"); };
             const timeOptions = []; for(let h=0; h<24; h++) { timeOptions.push(`${String(h).padStart(2,'0')}:00`); timeOptions.push(`${String(h).padStart(2,'0')}:30`); }
 
             // ★ 新增：帶入範本功能
@@ -904,7 +944,8 @@
 
             const copyShopLink = () => {
                 if(!store) return;
-                const link = new URL(`booking.html?id=${store.id}`, window.location.href).href;
+                // ★ Refactor: Update URL param to store_id
+                const link = new URL(`booking.html?store_id=${store.id}`, window.location.href).href;
                 navigator.clipboard.writeText(link);
                 alert("已複製預約連結！\n" + link);
             };
