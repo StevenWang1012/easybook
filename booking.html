@@ -4,34 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EasyBook 預約系統</title>
-    
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
-        @keyframes fade-in-up {
-            0% { opacity: 0; transform: translateY(10px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in-up { animation: fade-in-up 0.5s ease-out forwards; }
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #10b981;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        /* 隱藏滾動條但保留功能 */
+        .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
@@ -46,42 +32,6 @@
         const supabaseUrl = 'https://kwvbhzjzysmivafsvwng.supabase.co';
         const supabaseKey = 'sb_publishable_7RUbenk2kXNDmvuo1XtHbQ_m0RjXuZr'; 
         const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
-
-        // ★ 核心工具：生成時段 (支援跨日)
-        const generateTimeSlots = (openTime = "09:00", closeTime = "21:00") => {
-            const slots = [];
-            const [openH, openM] = openTime.split(':').map(Number);
-            const [closeH, closeM] = closeTime.split(':').map(Number);
-
-            let startMinutes = openH * 60 + openM;
-            let endMinutes = closeH * 60 + closeM;
-
-            // 處理跨日：如果結束時間小於開始時間，加 24小時
-            if (endMinutes < startMinutes) {
-                endMinutes += 24 * 60;
-            }
-
-            for (let m = startMinutes; m < endMinutes; m += 30) { // 注意這裡用 < endMinutes，通常不包含打烊那一刻
-                let h = Math.floor(m / 60);
-                let min = m % 60;
-                let isNextDay = false;
-                
-                if (h >= 24) {
-                    h -= 24;
-                    isNextDay = true;
-                }
-
-                const timeStr = `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
-                
-                slots.push({
-                    time: timeStr,
-                    isNextDay: isNextDay,
-                    label: isNextDay ? `${timeStr} (隔日)` : timeStr,
-                    sortValue: m 
-                });
-            }
-            return slots;
-        };
 
         const Icon = ({ name, size = 20, className = "" }) => {
             const ref = useRef(null);
@@ -98,6 +48,25 @@
                 }
             }, [name, size, className]);
             return <span ref={ref} className="inline-flex items-center justify-center"></span>;
+        };
+
+        // ★ 工具：生成時段
+        const generateTimeSlots = (openTime = "09:00", closeTime = "21:00") => {
+            const slots = [];
+            const [openH, openM] = openTime.split(':').map(Number);
+            const [closeH, closeM] = closeTime.split(':').map(Number);
+            let startMinutes = openH * 60 + openM;
+            let endMinutes = closeH * 60 + closeM;
+            if (endMinutes < startMinutes) endMinutes += 24 * 60;
+            for (let m = startMinutes; m < endMinutes; m += 30) {
+                let h = Math.floor(m / 60);
+                let min = m % 60;
+                let isNextDay = false;
+                if (h >= 24) { h -= 24; isNextDay = true; }
+                const timeStr = `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+                slots.push({ time: timeStr, isNextDay, label: isNextDay ? `${timeStr} (隔日)` : timeStr, sortValue: m });
+            }
+            return slots;
         };
 
         // --- 子組件：訂單列表 (MyBookings) ---
@@ -122,13 +91,11 @@
                 setLoading(true);
                 setHasSearched(true);
                 const today = new Date().toISOString().split('T')[0];
-
                 try {
                     const { data, error } = await supabaseClient
                         .from('bookings')
                         .select('*')
                         .eq('customer_phone', searchPhone)
-                        .eq('customer_name', searchName)
                         .gte('booking_date', today)
                         .neq('status', 'cancelled')
                         .order('booking_date', { ascending: true })
@@ -138,20 +105,16 @@
                     setOrders(data || []);
                     if(onUpdateCount) onUpdateCount((data || []).length);
                     localStorage.setItem('amber_user', JSON.stringify({ name: searchName, phone: searchPhone }));
-
                 } catch (err) {
                     console.error(err);
                     localStorage.removeItem('amber_user');
-                } finally {
-                    setLoading(false);
-                }
+                } finally { setLoading(false); }
             };
 
             const handleManualSearch = () => {
                 if (!/^\d{8,10}$/.test(phone)) return alert("請輸入正確的手機號碼");
-                if (!name.trim()) return alert("請輸入預約時的姓名");
                 const fullPhone = phone.length === 8 ? '09' + phone : phone;
-                doSearch(name.trim(), fullPhone);
+                doSearch(name || '訪客', fullPhone);
             };
 
             const handleCancel = async (id) => {
@@ -163,61 +126,31 @@
                     setOrders(newOrders);
                     if(onUpdateCount) onUpdateCount(newOrders.length);
                     alert("已取消預約！");
-                } catch(err) {
-                    alert("取消失敗：" + err.message);
-                }
+                } catch(err) { alert("取消失敗：" + err.message); }
             };
 
             return (
                 <div className="p-6 animate-fade-in-up pb-24">
                     <h2 className="text-2xl font-bold text-slate-800 mb-6">我的預約</h2>
-
                     {!hasSearched || orders.length === 0 ? (
                         <div className="mb-8 space-y-4">
-                            {!hasSearched && <div className="bg-emerald-50 p-4 rounded-xl text-xs text-emerald-800 border border-emerald-100 mb-4">
-                                <Icon name="shield-check" size={14} className="inline mr-1"/> 請輸入預約時的手機與姓名以驗證身分。
-                            </div>}
-                            
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 mb-1 uppercase">手機號碼</label>
-                                <input type="tel" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g,''))} placeholder="09xxxxxxxx" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-emerald-500"/>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 mb-1 uppercase">預約姓名</label>
-                                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="請輸入全名" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-emerald-500"/>
-                            </div>
-                            <button onClick={handleManualSearch} disabled={loading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition flex justify-center items-center shadow-lg active:scale-95">
-                                {loading ? '查詢中...' : <><Icon name="search" className="mr-2"/> 查詢紀錄</>}
-                            </button>
+                            {!hasSearched && <div className="bg-emerald-50 p-4 rounded-xl text-xs text-emerald-800 border border-emerald-100 mb-4"><Icon name="shield-check" size={14} className="inline mr-1"/> 請輸入預約時的手機以驗證身分。</div>}
+                            <div><label className="block text-xs font-bold text-slate-400 mb-1 uppercase">手機號碼</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g,''))} placeholder="09xxxxxxxx" className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-emerald-500"/></div>
+                            <button onClick={handleManualSearch} disabled={loading} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition flex justify-center items-center shadow-lg active:scale-95">{loading ? '查詢中...' : <><Icon name="search" className="mr-2"/> 查詢紀錄</>}</button>
                         </div>
                     ) : null}
-
                     {hasSearched && (
                         <div>
-                            {orders.length === 0 ? (
-                                <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">
-                                    <Icon name="calendar-off" size={32} className="mx-auto mb-2 opacity-50"/>
-                                    <p>目前沒有預約行程</p>
-                                </div>
-                            ) : (
+                            {orders.length === 0 ? <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400"><Icon name="calendar-off" size={32} className="mx-auto mb-2 opacity-50"/><p>目前沒有預約行程</p></div> : (
                                 <div className="space-y-4">
-                                    <div className="flex justify-between items-end mb-2">
-                                        <h3 className="font-bold text-slate-700">即將到來 ({orders.length})</h3>
-                                        <button onClick={() => {localStorage.removeItem('amber_user'); setHasSearched(false); setOrders([]); setPhone(''); setName(''); onUpdateCount(0);}} className="text-xs text-slate-400 underline">登出 / 清除紀錄</button>
-                                    </div>
+                                    <div className="flex justify-between items-end mb-2"><h3 className="font-bold text-slate-700">即將到來 ({orders.length})</h3><button onClick={() => {localStorage.removeItem('amber_user'); setHasSearched(false); setOrders([]); setPhone(''); setName(''); onUpdateCount(0);}} className="text-xs text-slate-400 underline">清除紀錄</button></div>
                                     {orders.map(order => (
                                         <div key={order.id} className="bg-white p-5 rounded-2xl border-l-4 border-emerald-500 shadow-sm relative group hover:shadow-md transition">
                                             <div className="flex justify-between items-start mb-3">
-                                                <div>
-                                                    <div className="text-xs font-bold text-emerald-600 mb-1 flex items-center"><Icon name="calendar" size={12} className="mr-1"/>{order.booking_date}</div>
-                                                    <div className="text-3xl font-bold text-slate-800 font-mono tracking-tight">{order.booking_time}</div>
-                                                </div>
+                                                <div><div className="text-xs font-bold text-emerald-600 mb-1 flex items-center"><Icon name="calendar" size={12} className="mr-1"/>{order.booking_date}</div><div className="text-3xl font-bold text-slate-800 font-mono tracking-tight">{order.booking_time}</div></div>
                                                 <button onClick={() => handleCancel(order.id)} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-red-50 hover:text-red-500 transition font-bold">取消</button>
                                             </div>
-                                            <div className="pt-3 border-t border-slate-50 flex justify-between items-center text-sm">
-                                                <span className="font-bold text-slate-700 flex items-center"><Icon name="layers" size={14} className="mr-1 text-slate-400"/> {order.service_name}</span>
-                                                <span className="text-slate-500 flex items-center bg-slate-50 px-2 py-1 rounded-md text-xs"><Icon name="user" size={12} className="mr-1"/>{order.staff_name}</span>
-                                            </div>
+                                            <div className="pt-3 border-t border-slate-50 flex justify-between items-center text-sm"><span className="font-bold text-slate-700 flex items-center"><Icon name="layers" size={14} className="mr-1 text-slate-400"/> {order.service_name}</span><span className="text-slate-500 flex items-center bg-slate-50 px-2 py-1 rounded-md text-xs"><Icon name="user" size={12} className="mr-1"/>{order.staff_name}</span></div>
                                         </div>
                                     ))}
                                 </div>
@@ -232,204 +165,161 @@
         function BookingApp() {
             const [activeTab, setActiveTab] = useState('booking'); 
             const [badgeCount, setBadgeCount] = useState(0); 
-
             const [step, setStep] = useState(1);
             const [storeInfo, setStoreInfo] = useState(null);
             const [services, setServices] = useState([]);
             const [staffList, setStaffList] = useState([]);
             const [loading, setLoading] = useState(true);
-            
             const [selectedService, setSelectedService] = useState(null);
             const [selectedStaff, setSelectedStaff] = useState(null);
-            const [selectedTimeObj, setSelectedTimeObj] = useState(null); // 改存物件，包含 isNextDay
+            const [selectedTimeObj, setSelectedTimeObj] = useState(null);
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-            
             const [bookedSlots, setBookedSlots] = useState([]);
             const [isCheckingSlots, setIsCheckingSlots] = useState(false);
             const [showInfoModal, setShowInfoModal] = useState(false);
             const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '' });
             const [isSubmitting, setIsSubmitting] = useState(false);
             const [error, setError] = useState('');
+            const [lineProfile, setLineProfile] = useState(null);
+            const [liffInitialized, setLiffInitialized] = useState(false);
 
-            // ★ 動態計算時段 (根據 storeInfo)
-            const dynamicSlots = useMemo(() => {
-                if(!storeInfo) return [];
-                // 如果資料庫沒設定，預設 09:00 - 21:00
-                return generateTimeSlots(storeInfo.open_time || "09:00", storeInfo.close_time || "21:00");
-            }, [storeInfo]);
+            const dynamicSlots = useMemo(() => storeInfo ? generateTimeSlots(storeInfo.open_time, storeInfo.close_time) : [], [storeInfo]);
 
             useEffect(() => {
                 async function init() {
                     try {
                         setLoading(true);
-                        // 1. 抓取店鋪資料
-                        const { data: stores } = await supabaseClient.from('stores').select('*').limit(1);
+                        const params = new URLSearchParams(window.location.search);
+                        const idFromUrl = params.get('id');
+                        let q = supabaseClient.from('stores').select('*');
+                        if (idFromUrl) q = q.eq('id', idFromUrl);
+                        const { data: stores } = await q.limit(1);
+                            
                         if (stores && stores.length > 0) {
-                            setStoreInfo({ 
-                                ...stores[0], 
-                                description: stores[0].description || "找回身體的流動與平衡。", 
-                                address: stores[0].address || "台北市", 
-                                lineUrl: stores[0].line_url 
-                            });
+                            setStoreInfo(stores[0]);
+                            if (stores[0].line_channel_id && window.liff) {
+                                try {
+                                    await window.liff.init({ liffId: stores[0].line_channel_id });
+                                    setLiffInitialized(true);
+                                    if (window.liff.isLoggedIn()) {
+                                        const profile = await window.liff.getProfile();
+                                        setLineProfile(profile);
+                                        setCustomerInfo(prev => ({ ...prev, name: profile.displayName }));
+                                    }
+                                } catch (e) { console.log("LIFF error", e); }
+                            }
+                            const { data: svc } = await supabaseClient.from('services').select('*').eq('store_id', stores[0].id).is('deleted_at', null);
+                            if (svc) setServices(svc);
+                            const { data: stf } = await supabaseClient.from('staff').select('*').eq('store_id', stores[0].id).is('deleted_at', null).order('rating', { ascending: false });
+                            if (stf) setStaffList(stf);
                         }
-                        const { data: svc } = await supabaseClient.from('services').select('*');
-                        if (svc) setServices(svc.filter(i => !i.deleted_at));
-                        const { data: stf } = await supabaseClient.from('staff').select('*').order('rating', { ascending: false });
-                        if (stf) setStaffList(stf.filter(i => !i.deleted_at));
-
                         const savedUser = localStorage.getItem('amber_user');
-                        if (savedUser) {
-                            const { name, phone } = JSON.parse(savedUser);
-                            const today = new Date().toISOString().split('T')[0];
-                            const { count } = await supabaseClient.from('bookings').select('*', { count: 'exact', head: true })
-                                .eq('customer_phone', phone).eq('customer_name', name).gte('booking_date', today).neq('status', 'cancelled');
-                            if(count) setBadgeCount(count);
-                        }
+                        if (savedUser) { const { name, phone } = JSON.parse(savedUser); setCustomerInfo({ name, phone: phone.replace(/^09/, '') }); }
                     } catch (err) { console.error(err); } finally { setLoading(false); }
                 }
                 init();
             }, []);
 
-            // 檢查時段佔用 (包含跨日邏輯)
             useEffect(() => { if (step === 3 && selectedStaff) fetchAvailability(); }, [step, selectedDate, selectedStaff]);
 
+            // ★ 計算緩衝期與占用時段 (保留 V3.3 修正邏輯)
             async function fetchAvailability() {
                 setIsCheckingSlots(true);
                 try {
-                    // ★ 查詢範圍擴大：查「選取日期」以及「選取日期 + 1天」(為了處理跨日重疊)
-                    const nextDate = new Date(selectedDate);
-                    nextDate.setDate(nextDate.getDate() + 1);
+                    const nextDate = new Date(selectedDate); nextDate.setDate(nextDate.getDate() + 1);
                     const nextDateStr = nextDate.toISOString().split('T')[0];
-
                     let query = supabaseClient.from('bookings').select('booking_date, booking_time, service_name, status')
+                        .eq('store_id', storeInfo.id)
                         .in('booking_date', [selectedDate, nextDateStr])
                         .neq('status', 'cancelled'); 
-                    
                     if (!selectedStaff.isAny) query = query.eq('staff_name', selectedStaff.name);
                     const { data: bookingsData } = await query;
 
                     const takenSlots = new Set();
                     if (bookingsData) {
                         bookingsData.forEach(booking => {
-                            // 計算該預約的「絕對開始分鐘數」(相對於 selectedDate 00:00)
                             const [bH, bM] = booking.booking_time.split(':').map(Number);
-                            let bookingStartMins = bH * 60 + bM;
-                            
-                            // 如果這筆訂單是「隔天」的，分鐘數要加 24*60
-                            if (booking.booking_date === nextDateStr) {
-                                bookingStartMins += 24 * 60;
-                            }
-
-                            let duration = 30;
-                            if (booking.status !== 'blocked') {
-                                const service = services.find(s => s.name === booking.service_name);
-                                if (service) duration = service.duration;
-                            }
-                            
-                            // 標記佔用時段
-                            const slotsCount = Math.ceil(duration / 30);
-                            for (let i = 0; i < slotsCount; i++) {
-                                let currentTotalMinutes = bookingStartMins + (i * 30);
-                                takenSlots.add(currentTotalMinutes);
-                            }
+                            let start = bH * 60 + bM;
+                            if (booking.booking_date === nextDateStr) start += 1440;
+                            takenSlots.add(start);
                         });
                     }
-                    
-                    // 比對 dynamicSlots
-                    const finalBookedSlots = [];
-                    const currentServiceDuration = selectedService ? selectedService.duration : 30;
-                    const slotsNeeded = Math.ceil(currentServiceDuration / 30);
 
-                    dynamicSlots.forEach(slot => {
-                        // slot.sortValue 是該時段的絕對分鐘數 (跨日已加 1440)
-                        const startMins = slot.sortValue;
+                    // Lead Time Logic
+                    const now = new Date();
+                    const leadTimeHours = storeInfo.min_lead_hours || 0;
+                    const cutoffTime = new Date(now.getTime() + leadTimeHours * 60 * 60 * 1000);
+
+                    const finalSlots = dynamicSlots.map(slot => {
+                        // 1. 檢查是否已預約
+                        if (takenSlots.has(slot.sortValue)) return { ...slot, isTaken: true, reason: '已滿' };
                         
-                        // 檢查起始點是否被佔用
-                        if (takenSlots.has(startMins)) { 
-                            finalBookedSlots.push(slot.time); // 這裡存 time string 方便比對 UI
-                            return; 
-                        }
+                        // 2. 檢查緩衝期
+                        let slotDateObj = new Date(selectedDate);
+                        if (slot.isNextDay) slotDateObj.setDate(slotDateObj.getDate() + 1);
+                        const [sH, sM] = slot.time.split(':').map(Number);
+                        slotDateObj.setHours(sH, sM, 0, 0);
 
-                        // 檢查連續時段
-                        if (slotsNeeded > 1) {
-                            let isConflict = false;
-                            for (let i = 1; i < slotsNeeded; i++) {
-                                const checkMins = startMins + (i * 30);
-                                if (takenSlots.has(checkMins)) { isConflict = true; break; }
-                            }
-                            if (isConflict) finalBookedSlots.push(slot.time);
-                        }
+                        if (slotDateObj < cutoffTime) return { ...slot, isTaken: true, reason: '已過' };
+                        
+                        return { ...slot, isTaken: false };
                     });
-                    
-                    setBookedSlots(finalBookedSlots);
+
+                    setBookedSlots(finalSlots);
                 } catch (err) { console.error(err); } finally { setIsCheckingSlots(false); }
             }
 
-            const handleConfirm = async () => {
-                const phoneSuffixRegex = /^\d{8}$/;
-                if (!phoneSuffixRegex.test(customerInfo.phone)) { setError('請輸入完整的手機號碼 (後 8 碼)'); return; }
-                const fullPhoneNumber = '09' + customerInfo.phone;
-                
-                // ★ 處理跨日存檔日期
-                let finalDate = selectedDate;
-                if (selectedTimeObj.isNextDay) {
-                    const d = new Date(selectedDate);
-                    d.setDate(d.getDate() + 1);
-                    finalDate = d.toISOString().split('T')[0];
+            // ★ 補回: LINE Login 處理函數
+            const handleLineLogin = () => {
+                if (!liffInitialized) return alert("LINE Login 初始化失敗，請稍後再試");
+                if (!window.liff.isLoggedIn()) {
+                    window.liff.login(); // 會跳轉
                 }
+            };
+
+            const handleConfirm = async () => {
+                if (!/^\d{8}$/.test(customerInfo.phone)) { setError('請輸入 8 碼手機'); return; }
+                const fullPhone = '09' + customerInfo.phone;
+                let finalDate = selectedDate;
+                if (selectedTimeObj.isNextDay) { const d = new Date(selectedDate); d.setDate(d.getDate()+1); finalDate = d.toISOString().split('T')[0]; }
 
                 setIsSubmitting(true);
                 try {
-                    const { error: insertError } = await supabaseClient.from('bookings').insert([{
-                        store_id: storeInfo.id,
-                        service_name: selectedService.name,
-                        staff_name: selectedStaff.name,
-                        booking_date: finalDate, // 使用計算後的日期
-                        booking_time: selectedTimeObj.time, // 存入原始 HH:MM
-                        customer_name: customerInfo.name,
-                        customer_phone: fullPhoneNumber,
-                        status: 'confirmed',
-                        device_info: navigator.userAgent
-                    }]);
-                    if (insertError) throw insertError;
+                    const { error } = await supabaseClient.rpc('public_submit_booking', {
+                        p_store_id: storeInfo.id,
+                        p_name: customerInfo.name,
+                        p_phone: fullPhone,
+                        p_line_uid: lineProfile?.userId || null,
+                        p_booking_date: finalDate,
+                        p_booking_time: selectedTimeObj.time,
+                        p_service_name: selectedService.name,
+                        p_staff_name: selectedStaff.name,
+                        p_device_info: navigator.userAgent
+                    });
+
+                    if (error) throw error;
                     
-                    localStorage.setItem('amber_user', JSON.stringify({ name: customerInfo.name, phone: fullPhoneNumber }));
+                    localStorage.setItem('amber_user', JSON.stringify({ name: customerInfo.name, phone: fullPhone }));
                     setBadgeCount(prev => prev + 1);
                     setStep(5);
-
                 } catch (err) {
-                    alert("預約錯誤: " + err.message);
+                    alert("預約失敗: " + err.message);
                 } finally { setIsSubmitting(false); }
             };
 
             const generateGoogleCalendarUrl = () => {
                 if (!selectedService || !selectedDate || !selectedTimeObj) return '#';
-                
-                // 計算正確的開始與結束時間 (含跨日)
                 let startD = new Date(selectedDate);
                 if (selectedTimeObj.isNextDay) startD.setDate(startD.getDate() + 1);
-                
                 const [h, m] = selectedTimeObj.time.split(':').map(Number);
                 startD.setHours(h, m);
-                
                 const endD = new Date(startD);
                 endD.setMinutes(endD.getMinutes() + selectedService.duration);
-
-                const formatGCalTime = (date) => {
-                    return date.toISOString().replace(/-|:|\.\d\d\d/g, ""); // ISO 轉 Google 格式
-                };
-
+                const format = (d) => d.toISOString().replace(/-|:|\.\d\d\d/g, ""); 
                 const title = encodeURIComponent(`${storeInfo.name} - ${selectedService.name}`);
-                const details = encodeURIComponent(`指導老師：${selectedStaff.name}\n預約編號：${customerInfo.phone}`);
-                const location = encodeURIComponent(storeInfo.address);
-
-                return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${formatGCalTime(startD)}/${formatGCalTime(endD)}&details=${details}&location=${location}`;
+                const details = encodeURIComponent(`指導老師：${selectedStaff.name}`);
+                return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${format(startD)}/${format(endD)}&details=${details}&location=${encodeURIComponent(storeInfo.address)}`;
             };
-
-            const handleServiceSelect = (service) => { setSelectedService(service); setStep(2); };
-            const handleStaffSelect = (staff) => { setSelectedStaff(staff); setStep(3); };
-            // 改為接收整個 slot 物件
-            const handleTimeSelect = (slotObj) => { setSelectedTimeObj(slotObj); setStep(4); };
 
             if (loading) return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50"><div className="loader mb-4"></div><p className="text-slate-500">載入中...</p></div>;
             if (!storeInfo) return <div className="text-center p-10">資料庫未連接</div>;
@@ -437,21 +327,14 @@
             return (
                 <div className="min-h-screen bg-gradient-to-br from-stone-50 to-emerald-50 flex justify-center md:p-4 relative">
                     <div className="w-full h-screen rounded-none md:max-w-md md:h-[85vh] md:rounded-[32px] bg-white shadow-2xl flex flex-col overflow-hidden relative border-0 md:border border-white/50">
-                        
-                        {/* 內容區域 */}
                         <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
-                            
-                            {/* 分頁：預約首頁 */}
                             {activeTab === 'booking' && (
                                 <>
                                     <header className="bg-white/80 backdrop-blur-md p-4 border-b border-stone-100 flex items-center sticky top-0 z-20">
                                         {step > 1 && step < 5 && <button onClick={() => setStep(step - 1)} className="mr-2 p-2 rounded-full hover:bg-stone-100"><Icon name="chevron-left" /></button>}
-                                        <div className="flex-1 text-center font-bold text-stone-700">
-                                            {step === 1 ? "預約課程" : step === 2 ? "選擇指導老師" : step === 3 ? "選擇時段" : step === 4 ? "確認資料" : "預約完成"}
-                                        </div>
+                                        <div className="flex-1 text-center font-bold text-stone-700">{step === 1 ? "預約課程" : step === 2 ? "選擇指導老師" : step === 3 ? "選擇時段" : step === 4 ? "確認資料" : "預約完成"}</div>
                                         {step > 1 && step < 5 && <div className="w-10"></div>}
                                     </header>
-
                                     {step < 5 && <div className="w-full bg-stone-100 h-1"><div className="bg-emerald-500 h-1 transition-all duration-500" style={{ width: `${(step / 4) * 100}%` }}></div></div>}
 
                                     <div className="p-5 pb-24">
@@ -462,38 +345,68 @@
                                                     <p className="text-sm text-stone-500 mt-1 px-4 whitespace-pre-wrap">{storeInfo.description}</p>
                                                     <div className="flex items-center justify-center mt-3 text-xs text-stone-400"><Icon name="map-pin" size={14} className="mr-1 text-emerald-500" />{storeInfo.address}</div>
                                                 </div>
-                                                <div className="space-y-4">{services.map(service => (<div key={service.id} onClick={() => handleServiceSelect(service)} className="bg-white border border-stone-100 rounded-2xl p-5 hover:border-emerald-400 hover:shadow-lg cursor-pointer transition-all active:scale-95 group"><div className="flex justify-between"><div><h3 className="font-bold text-lg text-stone-800 group-hover:text-emerald-700">{service.name}</h3><p className="text-xs text-stone-400 mt-1">{service.description}</p><div className="flex items-center text-xs text-stone-400 mt-2 font-medium"><span className="mr-1">🕒</span> {service.duration} 分鐘</div></div><span className="text-lg font-bold text-emerald-600 font-mono">${service.price}</span></div></div>))}</div>
+                                                <div className="space-y-4">{services.map(service => (<div key={service.id} onClick={() => { setSelectedService(service); setStep(2); }} className="bg-white border border-stone-100 rounded-2xl p-5 hover:border-emerald-400 hover:shadow-lg cursor-pointer transition-all active:scale-95 group"><div className="flex justify-between"><div><h3 className="font-bold text-lg text-stone-800 group-hover:text-emerald-700">{service.name}</h3><p className="text-xs text-stone-400 mt-1">{service.description}</p><div className="flex items-center text-xs text-stone-400 mt-2 font-medium"><span className="mr-1">🕒</span> {service.duration} 分鐘</div></div><span className="text-lg font-bold text-emerald-600 font-mono">${service.price}</span></div></div>))}</div>
                                             </div>
                                         )}
                                         {step === 2 && (
                                             <div className="space-y-4 animate-fade-in-up">
                                                 <div className="bg-emerald-50 p-3 rounded-xl text-sm text-emerald-800 border border-emerald-100 flex justify-between"><span>課程：{selectedService.name}</span><span className="font-bold">${selectedService.price}</span></div>
-                                                <div onClick={() => handleStaffSelect({ id: 'any', name: '不指定老師', avatar: '', isAny: true })} className="border border-dashed border-stone-300 rounded-2xl p-4 flex items-center hover:bg-emerald-50 cursor-pointer"><div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mr-4 text-xl">🧘</div><div><h3 className="font-bold text-stone-700">不指定 (最快可約)</h3><p className="text-xs text-stone-400">由系統安排合適教練</p></div></div>
-                                                <div className="grid grid-cols-2 gap-3">{staffList.map(staff => (<div key={staff.id} onClick={() => handleStaffSelect(staff)} className="border border-stone-100 rounded-2xl p-4 flex flex-col items-center hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white group"><img src={staff.avatar} className="w-16 h-16 rounded-full mb-2 bg-stone-50 group-hover:scale-105 transition-transform object-cover" /><h3 className="font-bold text-stone-700">{staff.name}</h3><span className="text-[10px] bg-stone-100 text-stone-500 px-2 py-1 rounded mt-1">{staff.title}</span></div>))}</div>
+                                                <div onClick={() => { setSelectedStaff({ id: 'any', name: '不指定老師', isAny: true }); setStep(3); }} className="border border-dashed border-stone-300 rounded-2xl p-4 flex items-center hover:bg-emerald-50 cursor-pointer"><div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mr-4 text-xl">🧘</div><div><h3 className="font-bold text-stone-700">不指定 (最快可約)</h3><p className="text-xs text-stone-400">由系統安排合適教練</p></div></div>
+                                                <div className="grid grid-cols-2 gap-3">{staffList.map(staff => (<div key={staff.id} onClick={() => { setSelectedStaff(staff); setStep(3); }} className="border border-stone-100 rounded-2xl p-4 flex flex-col items-center hover:border-emerald-500 hover:shadow-md cursor-pointer bg-white group"><img src={staff.avatar} className="w-16 h-16 rounded-full mb-2 bg-stone-50 group-hover:scale-105 transition-transform object-cover" /><h3 className="font-bold text-stone-700">{staff.name}</h3><span className="text-[10px] bg-stone-100 text-stone-500 px-2 py-1 rounded mt-1">{staff.title}</span></div>))}</div>
                                             </div>
                                         )}
                                         {step === 3 && (
                                             <div className="animate-fade-in-up">
                                                 <div className="flex space-x-2 mb-6 text-xs"><span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">{selectedService.name}</span><span className="bg-stone-100 text-stone-600 px-3 py-1 rounded-full">{selectedStaff.name}</span></div>
                                                 <div className="mb-6"><label className="block text-xs font-bold text-stone-400 mb-2 uppercase">預約日期</label><input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-full p-3 bg-white border border-stone-200 rounded-xl font-bold text-stone-700"/></div>
+                                                
+                                                {/* ★ 預約緩衝提示 */}
+                                                {storeInfo.min_lead_hours > 0 && (
+                                                    <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg mb-4 flex items-center">
+                                                        <Icon name="clock" size={12} className="mr-1"/> 
+                                                        此店家需提前 {storeInfo.min_lead_hours} 小時預約
+                                                    </div>
+                                                )}
+
                                                 <h3 className="font-bold mb-4 flex items-center text-stone-700"><Icon name="calendar" size={16} className="mr-2"/> 選擇時段 {isCheckingSlots && <span className="ml-2 text-xs font-normal text-slate-400">查詢中...</span>}</h3>
                                                 <div className="grid grid-cols-3 gap-2">
-                                                    {dynamicSlots.map(slot => { 
-                                                        const isTaken = bookedSlots.includes(slot.time); 
-                                                        return (
-                                                            <button key={slot.label} onClick={() => !isTaken && handleTimeSelect(slot)} disabled={isTaken} className={`py-3 px-1 border rounded-lg text-sm font-medium transition active:scale-95 flex flex-col items-center justify-center ${isTaken ? 'bg-stone-100 text-stone-300 border-stone-100 cursor-not-allowed' : 'bg-white hover:bg-emerald-600 hover:text-white hover:border-emerald-600 text-stone-600 border-stone-200'}`}>
-                                                                {slot.label}
-                                                                {isTaken && <span className="text-[9px] font-normal">已額滿</span>}
-                                                            </button>
-                                                        ); 
-                                                    })}
+                                                    {bookedSlots.map(slot => (
+                                                        <button 
+                                                            key={slot.label} 
+                                                            onClick={() => !slot.isTaken && (() => { setSelectedTimeObj(slot); setStep(4); })()} 
+                                                            disabled={slot.isTaken} 
+                                                            className={`py-3 px-1 border rounded-lg text-sm font-medium transition active:scale-95 flex flex-col items-center justify-center ${slot.isTaken ? 'bg-stone-100 text-stone-300 border-stone-100 cursor-not-allowed' : 'bg-white hover:bg-emerald-600 hover:text-white hover:border-emerald-600 text-stone-600 border-stone-200'}`}
+                                                        >
+                                                            {slot.label}
+                                                            {slot.isTaken && <span className="text-[9px] font-normal">{slot.reason || '已滿'}</span>}
+                                                        </button>
+                                                    ))}
                                                 </div>
                                             </div>
                                         )}
                                         {step === 4 && (
                                             <div className="space-y-6 animate-fade-in-up">
                                                 <div className="bg-white border border-stone-100 shadow-lg rounded-2xl overflow-hidden"><div className="bg-emerald-600 p-3 text-white font-bold text-center">預約確認</div><div className="p-5 space-y-3 text-sm"><div className="flex justify-between"><span className="text-stone-400">課程</span><span className="font-medium text-stone-700">{selectedService.name}</span></div><div className="flex justify-between"><span className="text-stone-400">老師</span><span className="font-medium text-stone-700">{selectedStaff.name}</span></div><div className="flex justify-between"><span className="text-stone-400">時間</span><span className="font-bold text-emerald-600">{selectedDate} {selectedTimeObj?.label}</span></div><div className="pt-3 border-t border-stone-100 flex justify-between items-center"><span className="text-stone-400">費用</span><span className="text-xl font-bold text-stone-800">${selectedService.price}</span></div></div></div>
-                                                <div className="space-y-4"><div><label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">姓名</label><input type="text" placeholder="您的稱呼" value={customerInfo.name} onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})} className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"/></div><div><label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">手機</label><div className="relative"><div className="absolute left-0 top-0 bottom-0 flex items-center pl-4 pointer-events-none"><span className="text-stone-500 font-bold border-r border-stone-300 pr-2 mr-2">09</span></div><input type="tel" maxLength="8" value={customerInfo.phone} onChange={(e) => { const val = e.target.value.replace(/\D/g, ''); setCustomerInfo({...customerInfo, phone: val}); setError(''); }} className={`w-full pl-16 pr-4 py-3 bg-stone-50 border rounded-xl focus:ring-2 outline-none ${error ? 'border-red-500 bg-red-50' : 'border-stone-200 focus:ring-emerald-500'}`}/></div>{error && <p className="text-red-500 text-xs mt-1 ml-1">{error}</p>}</div></div>
+                                                
+                                                {/* ★ 補回: LINE Login 按鈕 (若尚未登入) */}
+                                                {!lineProfile && liffInitialized && (
+                                                    <button onClick={handleLineLogin} className="w-full bg-[#06c755] text-white py-3 rounded-xl font-bold flex items-center justify-center shadow hover:bg-[#05b34c] transition">
+                                                        <span className="mr-2 text-xl">💬</span> LINE 快速登入 (自動帶入資料)
+                                                    </button>
+                                                )}
+
+                                                <div className="space-y-4">
+                                                    <div><label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">姓名</label><input type="text" placeholder="您的稱呼" value={customerInfo.name} onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})} className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"/></div>
+                                                    <div><label className="block text-xs font-bold text-stone-400 mb-1 ml-1 uppercase">手機 (用於接收通知)</label><div className="relative"><div className="absolute left-0 top-0 bottom-0 flex items-center pl-4 pointer-events-none"><span className="text-stone-500 font-bold border-r border-stone-300 pr-2 mr-2">09</span></div><input type="tel" maxLength="8" value={customerInfo.phone} onChange={(e) => { const val = e.target.value.replace(/\D/g, ''); setCustomerInfo({...customerInfo, phone: val}); setError(''); }} className={`w-full pl-16 pr-4 py-3 bg-stone-50 border rounded-xl focus:ring-2 outline-none ${error ? 'border-red-500 bg-red-50' : 'border-stone-200 focus:ring-emerald-500'}`}/></div>{error && <p className="text-red-500 text-xs mt-1 ml-1">{error}</p>}</div>
+                                                    
+                                                    {/* 顯示已綁定資訊 */}
+                                                    {lineProfile && (
+                                                        <div className="flex items-center bg-green-50 p-2 rounded-lg text-xs text-green-700">
+                                                            <img src={lineProfile.pictureUrl} className="w-6 h-6 rounded-full mr-2" />
+                                                            已綁定 LINE: {lineProfile.displayName}
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 <button onClick={handleConfirm} disabled={isSubmitting} className={`w-full text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-95 transition-all ${isSubmitting ? 'bg-stone-400 cursor-not-allowed' : 'bg-stone-800 hover:bg-stone-900'}`}>{isSubmitting ? '處理中...' : '確認預約'}</button>
                                             </div>
                                         )}
@@ -504,43 +417,33 @@
                                                 <p className="text-stone-500 text-sm mb-8">感謝您的預約，期待與您在墊上相見。</p>
                                                 <div className="bg-stone-50 p-6 rounded-2xl text-left mb-6 border border-stone-200"><div className="flex items-center mb-4"><Icon name="calendar" className="mr-3 text-emerald-500"/><div><h3 className="font-bold text-stone-800">{selectedDate}</h3><p className="text-emerald-600 font-bold">{selectedTimeObj?.label}</p></div></div><div className="text-sm text-stone-500 space-y-1 pl-9 border-l-2 border-stone-200 ml-2"><p>課程：{selectedService.name}</p><p>老師：{selectedStaff.name}</p><p>電話：09{customerInfo.phone}</p></div></div>
                                                 
-                                                <a href={generateGoogleCalendarUrl()} target="_blank" className="block w-full bg-white border border-slate-200 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 hover:text-emerald-600 transition mb-3 flex items-center justify-center shadow-sm">
-                                                    <Icon name="calendar-plus" size={18} className="mr-2"/> 加入 Google 日曆
-                                                </a>
+                                                <a href={generateGoogleCalendarUrl()} target="_blank" className="block w-full bg-white border border-slate-200 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 hover:text-emerald-600 transition mb-3 flex items-center justify-center shadow-sm"><Icon name="calendar-plus" size={18} className="mr-2"/> 加入 Google 日曆</a>
+                                                
+                                                {/* ★ 補回: 加入官方帳號 (Private Traffic) */}
+                                                {storeInfo.line_url && (
+                                                    <a href={storeInfo.line_url} target="_blank" className="block w-full bg-[#06c755] text-white py-3 rounded-xl font-bold hover:bg-[#05b34c] transition flex items-center justify-center shadow-lg shadow-green-500/20 mb-3"><span className="mr-2 text-xl">💬</span> 加入 LINE 接收提醒</a>
+                                                )}
 
-                                                <a href={storeInfo.lineUrl} target="_blank" className="block w-full bg-[#06c755] text-white py-3 rounded-xl font-bold hover:bg-[#05b34c] transition flex items-center justify-center shadow-lg shadow-green-500/20"><span className="mr-2 text-xl">💬</span> 加入 LINE 接收提醒</a>
+                                                <button onClick={()=>{setStep(1); setActiveTab('orders');}} className="block w-full bg-stone-800 text-white py-3 rounded-xl font-bold hover:bg-stone-900 transition flex items-center justify-center shadow-lg">查看我的訂單</button>
                                             </div>
                                         )}
                                     </div>
                                 </>
                             )}
-
                             {activeTab === 'orders' && <MyBookingsView onUpdateCount={setBadgeCount} />}
                         </div>
 
                         {/* 底部導覽列 */}
                         <div className="bg-white border-t border-slate-200 p-2 flex justify-around items-center absolute bottom-0 w-full shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-30">
-                            <button onClick={() => { setActiveTab('booking'); if(step === 5) { setStep(1); setSelectedTimeObj(null); } }} className={`flex flex-col items-center flex-1 py-2 rounded-xl transition active:scale-95 ${activeTab === 'booking' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}>
-                                <Icon name="calendar-plus" size={24} className="mb-1"/>
-                                <span className="text-[10px] font-bold">預約課程</span>
-                            </button>
-                            <button onClick={() => setActiveTab('orders')} className={`flex flex-col items-center flex-1 py-2 rounded-xl transition active:scale-95 relative ${activeTab === 'orders' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}>
-                                <div className="relative">
-                                    <Icon name="clipboard-list" size={24} className="mb-1"/>
-                                    {badgeCount > 0 && <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center shadow-sm animate-pulse">{badgeCount}</span>}
-                                </div>
-                                <span className="text-[10px] font-bold">我的訂單</span>
-                            </button>
+                            <button onClick={() => { setActiveTab('booking'); if(step === 5) { setStep(1); setSelectedTimeObj(null); } }} className={`flex flex-col items-center flex-1 py-2 rounded-xl transition active:scale-95 ${activeTab === 'booking' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}><Icon name="calendar-plus" size={24} className="mb-1"/><span className="text-[10px] font-bold">預約課程</span></button>
+                            <button onClick={() => setActiveTab('orders')} className={`flex flex-col items-center flex-1 py-2 rounded-xl transition active:scale-95 relative ${activeTab === 'orders' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}><div className="relative"><Icon name="clipboard-list" size={24} className="mb-1"/>{badgeCount > 0 && <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center shadow-sm animate-pulse">{badgeCount}</span>}</div><span className="text-[10px] font-bold">我的訂單</span></button>
                         </div>
 
-                        <a href="admin.html" className="absolute bottom-20 right-4 bg-slate-800/10 text-slate-400 p-2 rounded-full hover:bg-slate-800 hover:text-white transition z-20" title="前往商家後台"><Icon name="settings" size={16} /></a>
-
-                        {showInfoModal && <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6 backdrop-blur-sm animate-fade-in-up"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm relative"><button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><Icon name="x" size={24} /></button><h3 className="text-xl font-bold text-stone-800 mb-4 flex items-center"><Icon name="info" className="mr-2 text-emerald-500" /> 課程預約須知</h3><div className="text-sm text-stone-600 space-y-3 leading-relaxed whitespace-pre-wrap">{storeInfo.terms}</div><button onClick={() => setShowInfoModal(false)} className="w-full mt-6 bg-stone-800 text-white py-3 rounded-xl font-bold hover:bg-stone-900 transition">我了解了</button></div></div>}
+                        {showInfoModal && <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6 backdrop-blur-sm animate-fade-in-up"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm relative"><button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><Icon name="x" size={24} /></button><h3 className="text-xl font-bold text-stone-800 mb-4 flex items-center"><Icon name="info" className="mr-2 text-emerald-500" /> 課程預約須知</h3><div className="text-sm text-stone-600 space-y-3 leading-relaxed whitespace-pre-wrap">{storeInfo.terms || "尚無須知"}</div><button onClick={() => setShowInfoModal(false)} className="w-full mt-6 bg-stone-800 text-white py-3 rounded-xl font-bold hover:bg-stone-900 transition">我了解了</button></div></div>}
                     </div>
                 </div>
             );
         }
-
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<BookingApp />);
     </script>

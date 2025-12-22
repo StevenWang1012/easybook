@@ -3,164 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>easybook 預約系統 - 專為個人工作室打造的預約系統</title>
+    <title>EasyBook | 最懂個人工作室的預約系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
-        body { font-family: 'Noto Sans TC', sans-serif; }
-        .hero-pattern {
-            background-color: #f0fdf4;
-            background-image: radial-gradient(#10b981 0.5px, transparent 0.5px);
-            background-size: 20px 20px;
-        }
+        body { font-family: 'Noto Sans TC', sans-serif; scroll-behavior: smooth; }
+        .gradient-text { background: linear-gradient(135deg, #059669 0%, #0d9488 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero-bg { background: linear-gradient(to bottom right, #ecfdf5, #f0f9ff); }
+        
+        /* 光暈特效 */
+        .glow-card { transition: all 0.3s ease; }
+        .glow-card:hover { transform: translateY(-8px); }
+        .glow-purple:hover { box-shadow: 0 10px 40px -10px rgba(168, 85, 247, 0.4); border-color: rgba(168, 85, 247, 0.5); }
+        .glow-emerald:hover { box-shadow: 0 10px 40px -10px rgba(16, 185, 129, 0.4); border-color: rgba(16, 185, 129, 0.5); }
+        .glow-blue:hover { box-shadow: 0 10px 40px -10px rgba(59, 130, 246, 0.4); border-color: rgba(59, 130, 246, 0.5); }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800">
+<body class="text-slate-800">
+
+    <!-- Navbar -->
+    <nav class="fixed w-full bg-white/80 backdrop-blur-md border-b border-slate-100 z-50">
+        <div class="max-w-6xl mx-auto px-4 h-16 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i data-lucide="calendar-check-2" class="text-emerald-600 w-8 h-8"></i>
+                <span class="text-xl font-black tracking-tight text-slate-900">EasyBook</span>
+            </div>
+            <div class="hidden md:flex space-x-8 text-sm font-bold text-slate-500">
+                <a href="#features" class="hover:text-emerald-600 transition">功能特色</a>
+                <a href="#demo" class="hover:text-emerald-600 transition">預約體驗</a>
+            </div>
+            <div class="flex space-x-3">
+                <a href="admin.html" target="_blank" class="px-4 py-2 text-sm font-bold text-slate-600 hover:text-emerald-600 transition">商家登入</a>
+                <a href="#demo" class="px-5 py-2 text-sm font-bold bg-slate-900 text-white rounded-full hover:bg-slate-800 transition shadow-lg shadow-slate-200">立即體驗</a>
+            </div>
+        </div>
+    </nav>
 
     <!-- Hero Section -->
-    <div class="hero-pattern min-h-[60vh] flex flex-col items-center justify-center text-center px-4 relative overflow-hidden border-b border-emerald-100">
-        <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent to-slate-50"></div>
-        
-        <div class="z-10 max-w-3xl mx-auto">
-            <div class="inline-flex items-center bg-white px-3 py-1 rounded-full shadow-sm border border-emerald-100 mb-6 animate-bounce">
-                <span class="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>
-                <span class="text-xs font-bold text-emerald-700">v2.0 全新發布：支援員工獨立後台</span>
-            </div>
-            <h1 class="text-5xl md:text-6xl font-black text-slate-900 mb-6 tracking-tight leading-tight">
-                讓預約管理，<br>
-                像呼吸一樣<span class="text-emerald-600">自然流動</span>。
+    <header class="hero-bg pt-32 pb-20 px-4 text-center">
+        <div class="max-w-4xl mx-auto">
+            <div class="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold mb-6 border border-emerald-200">✨ V3.0 全新升級：支援多門店與員工排休</div>
+            <h1 class="text-4xl md:text-6xl font-black mb-6 leading-tight text-slate-900">
+                讓預約管理<br/>
+                <span class="gradient-text">像呼吸一樣簡單</span>
             </h1>
-            <p class="text-lg md:text-xl text-slate-500 mb-10 leading-relaxed">
-                專為瑜珈、皮拉提斯、個人工作室設計的 No-Code 解決方案。<br>
-                無需下載 App，無需複雜設定，打開網頁即刻啟用。
+            <p class="text-lg text-slate-500 mb-10 max-w-2xl mx-auto leading-relaxed">
+                專為物理治療、健身教練、美容工作室打造。告別繁瑣的 LINE 來回溝通，
+                透過 EasyBook 自動化處理排程、金流與客戶管理，讓您專注於提供最好的服務。
             </p>
-            <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                <a href="#demo" class="bg-emerald-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition transform hover:-translate-y-1">
-                    立即體驗 Demo
-                </a>
-                <a href="https://github.com/StevenWang1012/easybook" target="_blank" class="bg-white text-slate-700 border border-slate-200 px-8 py-4 rounded-xl font-bold text-lg hover:bg-slate-50 transition flex items-center justify-center">
-                    <i class="fab fa-github mr-2"></i> 查看原始碼
+            <div class="flex flex-col md:flex-row justify-center gap-4">
+                <a href="#demo" class="px-8 py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg shadow-xl shadow-emerald-200 hover:bg-emerald-700 transition transform hover:-translate-y-1">免費體驗</a>
+                <a href="booking.html?id=a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" target="_blank" class="px-8 py-4 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold text-lg hover:bg-slate-50 transition flex items-center justify-center">
+                    <i data-lucide="smartphone" class="w-5 h-5 mr-2"></i> 模擬客戶預約
                 </a>
             </div>
+            <p class="mt-4 text-xs text-slate-400">無需綁定信用卡 · 30秒快速設定</p>
         </div>
-    </div>
+    </header>
 
-    <!-- Feature Grid -->
-    <div class="max-w-6xl mx-auto px-6 py-20">
-        <div class="grid md:grid-cols-3 gap-8">
-            <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-xl transition duration-300">
-                <div class="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 text-2xl mb-6">
-                    <i class="fas fa-calendar-check"></i>
-                </div>
-                <h3 class="text-xl font-bold mb-3">極簡預約前台</h3>
-                <p class="text-slate-500 leading-relaxed">
-                    直覺的 3 步驟預約流程，支援動態時段計算。自動過濾額滿時段，防止超賣，給客戶最流暢的體驗。
-                </p>
-            </div>
-            <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-xl transition duration-300">
-                <div class="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 text-2xl mb-6">
-                    <i class="fas fa-chart-pie"></i>
-                </div>
-                <h3 class="text-xl font-bold mb-3">老闆總控中心</h3>
-                <p class="text-slate-500 leading-relaxed">
-                    一覽全店營收與訂單。具備強大的排班管理功能，可批次設定休假，並管理所有人員與課程資料。
-                </p>
-            </div>
-            <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-xl transition duration-300">
-                <div class="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600 text-2xl mb-6">
-                    <i class="fas fa-mobile-alt"></i>
-                </div>
-                <h3 class="text-xl font-bold mb-3">員工專屬 App</h3>
-                <p class="text-slate-500 leading-relaxed">
-                    每位老師擁有獨立登入碼。手機即時查看課表與業績，不再需要一直問老闆「明天幾點有課？」。
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Demo Section -->
-    <div id="demo" class="bg-slate-900 text-white py-24">
-        <div class="max-w-6xl mx-auto px-6">
-            <div class="text-center mb-16">
-                <h2 class="text-3xl md:text-4xl font-bold mb-4">親自試玩看看</h2>
-                <p class="text-slate-400">我們準備了三個角色的入口，請點擊下方按鈕體驗。</p>
-            </div>
-
+    <!-- Features Grid -->
+    <section id="features" class="py-20 bg-white">
+        <div class="max-w-6xl mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center mb-16 text-slate-900">為什麼選擇 EasyBook？</h2>
             <div class="grid md:grid-cols-3 gap-8">
-                <!-- C端 (滑鼠滑過變藍色) -->
-                <div class="group bg-slate-800 rounded-3xl p-1 border border-slate-700 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-500/20 hover:-translate-y-2 transition-all duration-300">
-                    <div class="bg-slate-800 p-8 rounded-[20px] h-full flex flex-col">
-                        <div class="mb-6">
-                            <span class="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider group-hover:bg-blue-500 group-hover:text-white transition-colors">Customer</span>
-                        </div>
-                        <h3 class="text-2xl font-bold mb-2">我是客人</h3>
-                        <p class="text-slate-400 text-sm mb-8 flex-1 group-hover:text-slate-300 transition-colors">
-                            模擬一般客戶進行課程預約。體驗流暢的選課、選人、選時段流程。
-                        </p>
-                        <a href="booking.html" target="_blank" class="block w-full bg-blue-600/20 text-blue-400 border border-blue-500/30 group-hover:bg-blue-600 group-hover:text-white text-center py-3 rounded-xl font-bold transition-all">
-                            進入預約頁面 <i class="fas fa-arrow-right ml-2"></i>
-                        </a>
+                <div class="p-8 rounded-3xl bg-slate-50 border border-slate-100 hover:border-emerald-200 transition group">
+                    <div class="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
+                        <i data-lucide="calendar-clock" class="text-emerald-600 w-7 h-7"></i>
                     </div>
+                    <h3 class="text-xl font-bold mb-3">智慧排程管理</h3>
+                    <p class="text-slate-500 leading-relaxed">支援多位老師排班、獨立休假設定。系統自動偵測衝突，避免重複預約，讓時間管理滴水不漏。</p>
                 </div>
-
-                <!-- B端 Admin (滑鼠滑過變綠色) -->
-                <div class="group bg-slate-800 rounded-3xl p-1 border border-slate-700 hover:border-emerald-500 hover:shadow-2xl hover:shadow-emerald-500/20 hover:-translate-y-2 transition-all duration-300">
-                    <div class="bg-slate-800 p-8 rounded-[20px] h-full flex flex-col relative overflow-hidden">
-                        <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                            <i class="fas fa-crown text-9xl text-white"></i>
-                        </div>
-                        <div class="mb-6 relative z-10">
-                            <span class="bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider group-hover:bg-emerald-500 group-hover:text-white transition-colors">Business Owner</span>
-                        </div>
-                        <h3 class="text-2xl font-bold mb-2 relative z-10">我是老闆</h3>
-                        <p class="text-slate-400 text-sm mb-6 flex-1 relative z-10 group-hover:text-slate-300 transition-colors">
-                            進入總控後台，管理所有設定。<br>
-                            <span class="text-emerald-400 mt-2 block bg-slate-800/50 p-3 rounded-lg border border-emerald-500/20 backdrop-blur-sm">
-                                <span class="flex items-center justify-between mb-1">
-                                    <span><i class="fas fa-key mr-2 opacity-70"></i> 帳號: <strong class="text-white">admin001@demo.com</strong></span>
-                                    <button onclick="navigator.clipboard.writeText('admin001@demo.com'); alert('已複製帳號！')" class="text-xs bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white px-2 py-1 rounded transition"><i class="fas fa-copy"></i></button>
-                                </span>
-                                <span class="flex items-center justify-between">
-                                    <span><i class="fas fa-lock mr-2 opacity-70"></i> 密碼: <strong class="text-white">Easy@2025</strong></span>
-                                    <button onclick="navigator.clipboard.writeText('Easy@2025'); alert('已複製密碼！')" class="text-xs bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white px-2 py-1 rounded transition"><i class="fas fa-copy"></i></button>
-                                </span>
-                            </span>
-                        </p>
-                        <a href="admin.html" target="_blank" class="block w-full bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 group-hover:bg-emerald-600 group-hover:text-white text-center py-3 rounded-xl font-bold transition-all relative z-10">
-                            登入管理後台 <i class="fas fa-arrow-right ml-2"></i>
-                        </a>
+                <div class="p-8 rounded-3xl bg-slate-50 border border-slate-100 hover:border-blue-200 transition group">
+                    <div class="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
+                        <i data-lucide="line-chart" class="text-blue-600 w-7 h-7"></i>
                     </div>
+                    <h3 class="text-xl font-bold mb-3">營收數據儀表板</h3>
+                    <p class="text-slate-500 leading-relaxed">即時掌握每日/每月營收、熱門課程與客戶分析。將繁雜的數據轉化為直觀圖表，決策更有依據。</p>
                 </div>
-
-                <!-- B端 Staff (滑鼠滑過變紫色) -->
-                <div class="group bg-slate-800 rounded-3xl p-1 border border-slate-700 hover:border-purple-500 hover:shadow-2xl hover:shadow-purple-500/20 hover:-translate-y-2 transition-all duration-300">
-                    <div class="bg-slate-800 p-8 rounded-[20px] h-full flex flex-col">
-                        <div class="mb-6">
-                            <span class="bg-purple-500/20 text-purple-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider group-hover:bg-purple-500 group-hover:text-white transition-colors">Staff</span>
-                        </div>
-                        <h3 class="text-2xl font-bold mb-2">我是老師</h3>
-                        <p class="text-slate-400 text-sm mb-6 flex-1 group-hover:text-slate-300 transition-colors">
-                            模擬員工登入，查看個人課表與業績。<br>
-                            <span class="text-purple-400 mt-2 block bg-slate-800/50 p-3 rounded-lg border border-purple-500/20 backdrop-blur-sm flex justify-between items-center">
-                                <span><i class="fas fa-user-lock mr-1"></i> 登入碼: <strong class="text-white">0000</strong></span>
-                                <button onclick="navigator.clipboard.writeText('0000'); alert('已複製登入碼！')" class="text-xs bg-purple-500/20 hover:bg-purple-500 text-purple-400 hover:text-white px-2 py-1 rounded transition"><i class="fas fa-copy"></i></button>
-                            </span>
-                        </p>
-                        <a href="https://stevenwang1012.github.io/easybook/staff.html?id=d4e1c7bf-720c-4e3d-a2a2-b0302a0dfddc" target="_blank" class="block w-full bg-purple-600/20 text-purple-400 border border-purple-500/30 group-hover:bg-purple-600 group-hover:text-white text-center py-3 rounded-xl font-bold transition-all">
-                            體驗員工後台 <i class="fas fa-arrow-right ml-2"></i>
-                        </a>
+                <div class="p-8 rounded-3xl bg-slate-50 border border-slate-100 hover:border-purple-200 transition group">
+                    <div class="w-14 h-14 bg-purple-100 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
+                        <i data-lucide="users" class="text-purple-600 w-7 h-7"></i>
                     </div>
+                    <h3 class="text-xl font-bold mb-3">CRM 客戶管理</h3>
+                    <p class="text-slate-500 leading-relaxed">紀錄客戶完整的消費歷程與備註（如物理治療進度）。支援黑名單功能與 VVIP 標籤，經營熟客更輕鬆。</p>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
+
+    <!-- Role Demo Section -->
+    <section id="demo" class="py-20 bg-slate-900 text-white">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold mb-4">全方位的角色支援</h2>
+                <p class="text-slate-400">點擊下方卡片，立即以不同身分體驗系統流程</p>
+            </div>
+            
+            <div class="grid md:grid-cols-3 gap-6 items-stretch">
+                
+                <!-- 1. 客戶預約 (Purple) -->
+                <a href="booking.html?id=a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" target="_blank" class="flex flex-col h-full bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-purple relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition"><i data-lucide="smartphone" class="w-24 h-24"></i></div>
+                    <div class="flex items-center mb-4">
+                        <span class="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-sm font-bold mr-3 shadow-lg shadow-purple-500/30">客</span>
+                        <h3 class="font-bold text-xl">客戶預約</h3>
+                    </div>
+                    <p class="text-sm text-slate-400 mb-6 flex-1">消費者專用。瀏覽課程、選擇時段、完成預約。支援 LINE 快速登入。</p>
+                    <div class="mt-auto">
+                        <div class="inline-block px-4 py-2 bg-purple-500/20 text-purple-300 rounded-lg text-xs font-mono border border-purple-500/30 w-full text-center">
+                            無需帳號，直接體驗
+                        </div>
+                    </div>
+                </a>
+
+                <!-- 2. 商家後台 (Emerald) -->
+                <div onclick="window.open('admin.html', '_blank')" class="cursor-pointer flex flex-col h-full bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-emerald relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition"><i data-lucide="store" class="w-24 h-24"></i></div>
+                    <div class="flex items-center mb-4">
+                        <span class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-sm font-bold mr-3 shadow-lg shadow-emerald-500/30">店</span>
+                        <h3 class="font-bold text-xl">商家後台</h3>
+                    </div>
+                    <p class="text-sm text-slate-400 mb-6 flex-1">店長專用。設定課程、管理人員、查看報表、處理全店事務。</p>
+                    <div class="space-y-2 mt-auto">
+                        <div class="flex items-center justify-between px-3 py-2 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs font-mono border border-emerald-500/30 w-full group/btn hover:bg-emerald-500/30 transition">
+                            <span class="truncate">帳號: admin001@demo.com</span>
+                            <button onclick="event.stopPropagation(); copyText('admin001@demo.com')" class="text-emerald-400 hover:text-white transition p-1 rounded hover:bg-emerald-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                        </div>
+                        <div class="flex items-center justify-between px-3 py-2 bg-emerald-500/20 text-emerald-300 rounded-lg text-xs font-mono border border-emerald-500/30 w-full group/btn hover:bg-emerald-500/30 transition">
+                            <span>密碼: Easy@2025</span>
+                            <button onclick="event.stopPropagation(); copyText('Easy@2025')" class="text-emerald-400 hover:text-white transition p-1 rounded hover:bg-emerald-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. 老師專區 (Blue) -->
+                <div onclick="window.open('staff.html?id=d4e1c7bf-720c-4e3d-a2a2-b0302a0dfddc', '_blank')" class="cursor-pointer flex flex-col h-full bg-white/5 border border-white/10 p-8 rounded-3xl glow-card glow-blue relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition"><i data-lucide="user-check" class="w-24 h-24"></i></div>
+                    <div class="flex items-center mb-4">
+                        <span class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-sm font-bold mr-3 shadow-lg shadow-blue-500/30">師</span>
+                        <h3 class="font-bold text-xl">老師專區</h3>
+                    </div>
+                    <p class="text-sm text-slate-400 mb-6 flex-1">員工/教練專用。查看個人班表、核銷訂單、申請排休、推廣個人連結。</p>
+                    <div class="mt-auto">
+                        <div class="flex items-center justify-between px-3 py-2 bg-blue-500/20 text-blue-300 rounded-lg text-xs font-mono border border-blue-500/30 w-full hover:bg-blue-500/30 transition">
+                            <span>登入碼: 0000</span>
+                            <button onclick="event.stopPropagation(); copyText('0000')" class="text-blue-400 hover:text-white transition p-1 rounded hover:bg-blue-500" title="複製"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
 
     <!-- Footer -->
-    <footer class="bg-slate-50 py-10 text-center text-slate-400 text-sm">
-        <p>&copy; 2025 easybook. All rights reserved.</p>
-        <p class="mt-2">Built with <i class="fas fa-heart text-red-400 mx-1"></i> & Supabase</p>
+    <footer class="bg-white border-t border-slate-100 py-12">
+        <div class="max-w-6xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center">
+            <div class="flex items-center space-x-2 mb-4 md:mb-0">
+                <i data-lucide="calendar-check-2" class="text-emerald-600 w-6 h-6"></i>
+                <span class="text-lg font-bold text-slate-900">EasyBook</span>
+            </div>
+            <div class="flex space-x-6 text-sm text-slate-400">
+                <a href="superadmin.html" target="_blank" class="hover:text-slate-600">平台管理 (SuperAdmin)</a>
+                <a href="#" class="hover:text-slate-600">隱私權政策</a>
+                <a href="#" class="hover:text-slate-600">服務條款</a>
+            </div>
+            <p class="text-xs text-slate-300 mt-4 md:mt-0">© 2024 EasyBook System. All rights reserved.</p>
+        </div>
     </footer>
 
+    <script>
+        // Init Icons
+        lucide.createIcons();
+
+        // Copy Function
+        function copyText(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // 簡單提示，不使用 alert 阻斷體驗
+                const originalTitle = document.title;
+                document.title = "已複製！";
+                setTimeout(() => document.title = originalTitle, 1000);
+            }).catch(err => {
+                console.error('複製失敗', err);
+            });
+        }
+    </script>
 </body>
 </html>
