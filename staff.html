@@ -69,41 +69,6 @@
             return <div ref={qrRef} className="p-4 bg-white border border-slate-200 rounded-2xl inline-block"></div>;
         }
 
-        // --- 子組件：QR Code 卡片 (工具頁用) ---
-        function QRCodeCard({ link, name }) {
-            const qrRef = useRef(null);
-            useEffect(() => {
-                if (qrRef.current) {
-                    qrRef.current.innerHTML = "";
-                    new QRCode(qrRef.current, {
-                        text: link,
-                        width: 128,
-                        height: 128,
-                        colorDark : "#0f172a",
-                        colorLight : "#ffffff",
-                        correctLevel : QRCode.CorrectLevel.H
-                    });
-                }
-            }, [link]);
-
-            const copyLink = () => {
-                navigator.clipboard.writeText(link);
-                alert("連結已複製！");
-            };
-
-            return (
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center text-center animate-fade-in-up">
-                    <h3 className="font-bold text-slate-800 mb-2">專屬預約連結</h3>
-                    <p className="text-xs text-slate-400 mb-4">讓學員直接掃描預約您的課程</p>
-                    <div ref={qrRef} className="p-2 bg-white border border-slate-200 rounded-xl mb-4"></div>
-                    <div className="flex gap-2 w-full">
-                        <input value={link} readOnly className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs text-slate-500"/>
-                        <button onClick={copyLink} className="bg-slate-800 text-white px-3 py-2 rounded-lg font-bold text-xs"><Icon name="copy" size={14}/></button>
-                    </div>
-                </div>
-            );
-        }
-
         // --- 子組件：月曆視圖 (Calendar View) ---
         function CalendarView({ bookings, currentDate, onDateChange, onDayClick }) {
             const year = parseInt(currentDate.split('-')[0]);
@@ -611,6 +576,7 @@
             const today = new Date().toISOString().split('T')[0];
             const upcomingBookings = bookings.filter(b => (b.booking_date >= today && b.status === 'confirmed') || (b.booking_date === today && b.status === 'blocked')).reverse();
             const displaySchedule = mergeScheduleItems(upcomingBookings);
+            // ★ Fix: 排除 blocked (排休) 出現在歷史紀錄
             const pastBookings = bookings.filter(b => (b.booking_date < today || b.status === 'completed' || b.status === 'cancelled') && b.status !== 'blocked').slice(0, 50);
             
             // ★ 新增：所有行程 (不含排休) - 供「總預約」檢視
@@ -709,7 +675,6 @@
                         {/* View: Tools */}
                         {view === 'tools' && (
                             <div className="space-y-6">
-                                <QRCodeCard link={bookingLink} name={staffData.name} />
                                 <WalkInBooking storeId={staffData.store_id} staffName={staffData.name} services={services} onBook={handleWalkIn} loading={loading} />
                                 <LeaveRequest onApply={handleSelfLeave} loading={loading} />
                             </div>
