@@ -224,47 +224,68 @@
 
             useEffect(() => { if (step === 3 && selectedStaff) fetchAvailability(); }, [step, selectedDate, selectedStaff]);
 
-            // 計算緩衝期與占用時段
+// ★ 安全版：改用 RPC 查詢時段，不再直接撈取資料庫
             async function fetchAvailability() {
                 setIsCheckingSlots(true);
                 try {
-                    const nextDate = new Date(selectedDate); nextDate.setDate(nextDate.getDate() + 1);
+                    const nextDate = new Date(selectedDate); 
+                    nextDate.setDate(nextDate.getDate() + 1);
                     const nextDateStr = nextDate.toISOString().split('T')[0];
-                    let query = supabaseClient.from('bookings').select('booking_date, booking_time, service_name, status')
-                        .eq('store_id', storeInfo.id)
-                        .in('booking_date', [selectedDate, nextDateStr])
-                        .neq('status', 'cancelled'); 
-                    if (!selectedStaff.isAny) query = query.eq('staff_name', selectedStaff.name);
-                    const { data: bookingsData } = await query;
 
+                    // ▼▼▼▼▼ 重點修改區：開始 ▼▼▼▼▼
+                    
+                    // 舊寫法 (危險)：直接 select * from bookings...
+                    // 新寫法 (安全)：呼叫後端 RPC 函式，只拿回「被佔用的時間」
+                    const { data: takenData, error } = await supabaseClient.rpc('public_get_taken_slots', {
+                        p_store_id: storeInfo.id,
+                        p_start_date: selectedDate,
+                        p_end_date: nextDateStr
+                    });
+
+                    if (error) {
+                        console.error("RPC Error:", error);
+                        throw error;
+                    }
+
+                    // 將回傳的資料整理成 Set (跟原本邏輯一樣，只是資料來源變了)
                     const takenSlots = new Set();
-                    if (bookingsData) {
-                        bookingsData.forEach(booking => {
+                    if (takenData) {
+                        takenData.forEach(booking => {
                             const [bH, bM] = booking.booking_time.split(':').map(Number);
                             let start = bH * 60 + bM;
+                            // 處理跨日 (nextDateStr) 的時段
                             if (booking.booking_date === nextDateStr) start += 1440;
                             takenSlots.add(start);
                         });
                     }
+                    // ▲▲▲▲▲ 重點修改區：結束 ▲▲▲▲▲
 
-                    // Lead Time Logic
+                    // --- 以下是原本的 Lead Time (緩衝期) 邏輯，完全不用動 ---
                     const now = new Date();
                     const leadTimeHours = storeInfo.min_lead_hours || 0;
                     const cutoffTime = new Date(now.getTime() + leadTimeHours * 60 * 60 * 1000);
 
                     const finalSlots = dynamicSlots.map(slot => {
+                        // 1. 檢查是否被佔用 (來自 RPC)
                         if (takenSlots.has(slot.sortValue)) return { ...slot, isTaken: true, reason: '已滿' };
+                        
+                        // 2. 檢查緩衝期 (來自前端計算)
                         let slotDateObj = new Date(selectedDate);
                         if (slot.isNextDay) slotDateObj.setDate(slotDateObj.getDate() + 1);
                         const [sH, sM] = slot.time.split(':').map(Number);
                         slotDateObj.setHours(sH, sM, 0, 0);
 
                         if (slotDateObj < cutoffTime) return { ...slot, isTaken: true, reason: '已過' };
+                        
                         return { ...slot, isTaken: false };
                     });
 
                     setBookedSlots(finalSlots);
-                } catch (err) { console.error(err); } finally { setIsCheckingSlots(false); }
+                } catch (err) { 
+                    console.error("查詢時段失敗:", err); 
+                } finally { 
+                    setIsCheckingSlots(false); 
+                }
             }
 
             // LINE Login
@@ -441,4 +462,5 @@
         root.render(<BookingApp />);
     </script>
 </body>
+
 </html>
